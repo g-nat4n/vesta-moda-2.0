@@ -81,8 +81,8 @@ export default async function OrderPage({
         <h1 className="display mt-2 text-4xl">{order.number}</h1>
 
         {approved ? (
-          <div className="mt-8 border border-forest/25 bg-white/70 px-6 py-5">
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-forest">
+          <div className="mt-8 border border-ink/20 bg-white px-6 py-5">
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-ink">
               Pagamento aprovado
             </p>
             <p className="mt-2 text-sm text-ink">

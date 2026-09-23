@@ -21,17 +21,17 @@ async function main() {
   const categories = await Promise.all(
     [
       {
-        name: "Vestidos",
-        slug: "vestidos",
-        description: "Silhuetas com presença, do cotidiano à noite.",
-        imageUrl: "https://images.unsplash.com/photo-1595777457583-95e059d581b8?auto=format&fit=crop&w=1200&q=80",
+        name: "Blazers",
+        slug: "blazers",
+        description: "Ombro, estrutura e presença.",
+        imageUrl: "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?auto=format&fit=crop&w=1200&q=80",
         sortOrder: 1,
       },
       {
-        name: "Blazers e casacos",
-        slug: "blazers-e-casacos",
-        description: "Estrutura, ombro e tecido com peso.",
-        imageUrl: "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?auto=format&fit=crop&w=1200&q=80",
+        name: "Casacos",
+        slug: "casacos",
+        description: "Camadas com peso e caimento.",
+        imageUrl: "https://images.unsplash.com/photo-1539533018447-63fcce2678e3?auto=format&fit=crop&w=1200&q=80",
         sortOrder: 2,
       },
       {
@@ -42,32 +42,53 @@ async function main() {
         sortOrder: 3,
       },
       {
-        name: "Calças e saias",
-        slug: "calcas-e-saias",
-        description: "Proporção e movimento.",
-        imageUrl: "https://images.unsplash.com/photo-1594633312681-425c7b97ccd1?auto=format&fit=crop&w=1200&q=80",
+        name: "Vestidos",
+        slug: "vestidos",
+        description: "Silhuetas com presença, do cotidiano à noite.",
+        imageUrl: "https://images.unsplash.com/photo-1595777457583-95e059d581b8?auto=format&fit=crop&w=1200&q=80",
         sortOrder: 4,
-      },
-      {
-        name: "Acessórios",
-        slug: "acessorios",
-        description: "Bolsas, lenços e o detalhe que fecha o look.",
-        imageUrl: "https://images.pexels.com/photos/1152077/pexels-photo-1152077.jpeg?auto=compress&cs=tinysrgb&w=1200",
-        sortOrder: 5,
-      },
-      {
-        name: "Garimpos",
-        slug: "garimpos",
-        description: "Achados com marca do tempo e caráter.",
-        imageUrl: "https://images.unsplash.com/photo-1558769132-cb1aea458c5e?auto=format&fit=crop&w=1200&q=80",
-        sortOrder: 6,
       },
       {
         name: "Sapatos",
         slug: "sapatos",
         description: "Social, casual e o detalhe que apoia o look.",
         imageUrl: "/curadoria/pexels-photo-298863.jpg",
+        sortOrder: 5,
+      },
+      {
+        name: "Bolsas",
+        slug: "bolsas",
+        description: "Couro, estrutura e o detalhe que fecha o look.",
+        imageUrl: "https://images.pexels.com/photos/1152077/pexels-photo-1152077.jpeg?auto=compress&cs=tinysrgb&w=1200",
+        sortOrder: 6,
+      },
+      {
+        name: "Calças e saias",
+        slug: "calcas-e-saias",
+        description: "Proporção e movimento.",
+        imageUrl: "https://images.unsplash.com/photo-1594633312681-425c7b97ccd1?auto=format&fit=crop&w=1200&q=80",
         sortOrder: 7,
+      },
+      {
+        name: "Acessórios",
+        slug: "acessorios",
+        description: "Lenços e o detalhe que completa.",
+        imageUrl: "https://images.unsplash.com/photo-1558769132-cb1aea458c5e?auto=format&fit=crop&w=1200&q=80",
+        sortOrder: 8,
+      },
+      {
+        name: "Garimpos",
+        slug: "garimpos",
+        description: "Achados com marca do tempo e caráter.",
+        imageUrl: "https://images.unsplash.com/photo-1558769132-cb1aea458c5e?auto=format&fit=crop&w=1200&q=80",
+        sortOrder: 9,
+      },
+      {
+        name: "Blazers e casacos",
+        slug: "blazers-e-casacos",
+        description: "Estrutura, ombro e tecido com peso.",
+        imageUrl: "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?auto=format&fit=crop&w=1200&q=80",
+        sortOrder: 10,
       },
     ].map((category) =>
       prisma.category.upsert({
@@ -392,6 +413,13 @@ async function main() {
   }
 
   for (const piece of FEATURED_PIECES) {
+    const categoryId =
+      cat[piece.categorySlug]?.id ??
+      cat["blazers"]?.id ??
+      cat["vestidos"]?.id ??
+      categories[0]?.id;
+    if (!categoryId) continue;
+
     const product = await prisma.product.upsert({
       where: { slug: piece.slug },
       update: {
@@ -402,7 +430,7 @@ async function main() {
         color: piece.color,
         condition: ProductCondition[piece.condition],
         priceCents: piece.priceCents,
-        categoryId: cat[piece.categorySlug].id,
+        categoryId,
         featured: true,
         status: ProductStatus.AVAILABLE,
         stock: 1,
@@ -417,7 +445,7 @@ async function main() {
         color: piece.color,
         condition: ProductCondition[piece.condition],
         priceCents: piece.priceCents,
-        categoryId: cat[piece.categorySlug].id,
+        categoryId,
         featured: true,
         status: ProductStatus.AVAILABLE,
         stock: 1,

@@ -1,74 +1,48 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { motion, useReducedMotion } from "motion/react";
 import { ProductCard, type ProductCardProduct } from "@/components/product/ProductCard";
 import { BrandLoader } from "@/components/ui/BrandLoader";
-
-const ROWS = 5;
-
-function pageSizeForWidth(width: number) {
-  if (width >= 1024) return 4 * ROWS;
-  if (width >= 768) return 3 * ROWS;
-  return 2 * ROWS;
-}
+import { useInfiniteCatalog } from "@/components/product/useInfiniteCatalog";
 
 export function CatalogGrid({ products }: { products: ProductCardProduct[] }) {
-  const [pageSize, setPageSize] = useState(20);
-  const [visible, setVisible] = useState(20);
-  const [loading, setLoading] = useState(false);
-  const sentinelRef = useRef<HTMLDivElement>(null);
+  const reduceMotion = useReducedMotion();
   const signature = products.map((product) => product.id).join(",");
-
-  useEffect(() => {
-    function update() {
-      setPageSize(pageSizeForWidth(window.innerWidth));
-    }
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, []);
-
-  useEffect(() => {
-    setVisible(pageSize);
-    setLoading(false);
-  }, [signature, pageSize]);
-
-  useEffect(() => {
-    const node = sentinelRef.current;
-    if (!node || loading || visible >= products.length) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (!entries[0]?.isIntersecting) return;
-        setLoading(true);
-      },
-      { rootMargin: "280px" },
-    );
-
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [loading, products.length, visible]);
-
-  useEffect(() => {
-    if (!loading) return;
-    const timer = window.setTimeout(() => {
-      setVisible((current) => Math.min(current + pageSize, products.length));
-      setLoading(false);
-    }, 520);
-    return () => window.clearTimeout(timer);
-  }, [loading, pageSize, products.length]);
-
+  const { visible, loading, revealFrom, sentinelRef, hasMore } = useInfiniteCatalog(
+    products.length,
+    signature,
+  );
   const shown = products.slice(0, visible);
 
   return (
-    <div className="mt-10">
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 md:gap-6 lg:grid-cols-4 lg:gap-7">
-        {shown.map((product) => (
-          <ProductCard key={product.id} product={product} />
-        ))}
+    <div className="mt-6">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 md:gap-5 lg:gap-6">
+        {shown.map((product, index) => {
+          const isNew = index >= revealFrom && revealFrom > 0;
+          return (
+            <motion.div
+              key={product.id}
+              initial={
+                reduceMotion || !isNew
+                  ? false
+                  : { opacity: 0, y: 28, scale: 0.98 }
+              }
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{
+                duration: 0.45,
+                delay: isNew ? (index - revealFrom) * 0.05 : 0,
+                ease: [0.22, 1, 0.36, 1],
+              }}
+            >
+              <ProductCard product={product} />
+            </motion.div>
+          );
+        })}
       </div>
-      {visible < products.length ? (
-        <div ref={sentinelRef}>{loading ? <BrandLoader /> : <div className="h-16" aria-hidden />}</div>
+      {hasMore ? (
+        <div ref={sentinelRef} className="min-h-16">
+          {loading ? <BrandLoader label="Carregando mais peças" /> : <div className="h-20" aria-hidden />}
+        </div>
       ) : null}
     </div>
   );

@@ -1,5 +1,5 @@
 export const APP_NAME = "Vesta Moda Pre-Owned";
-export const APP_TAGLINE = "Moda pre-owned com curadoria e presença.";
+export const APP_TAGLINE = "Curadoria de peças especiais — a maior rede de compradores via celular.";
 
 export const NAV_LINKS = [
   { href: "/", label: "Início" },

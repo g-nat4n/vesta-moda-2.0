@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import { SafeImage } from "@/components/ui/SafeImage";
 import { AdminShell } from "@/components/admin/AdminShell";
+import { AdminBackLink } from "@/components/admin/AdminBackLink";
+import { DbUnavailableBanner } from "@/components/admin/DbUnavailableBanner";
 import { getOrderById } from "@/services/order.service";
 import { OrderStatusForm } from "@/components/admin/OrderStatusForm";
 import { ORDER_STATUS_LABELS, PAYMENT_STATUS_LABELS } from "@/lib/constants";
@@ -10,11 +12,31 @@ type Params = Promise<{ id: string }>;
 
 export default async function AdminOrderDetailPage({ params }: { params: Params }) {
   const { id } = await params;
-  const order = await getOrderById(id);
+  let order: Awaited<ReturnType<typeof getOrderById>> = null;
+  let dbDown = false;
+
+  try {
+    order = await getOrderById(id);
+  } catch {
+    dbDown = true;
+  }
+
+  if (dbDown) {
+    return (
+      <AdminShell>
+        <AdminBackLink href="/admin/pedidos" label="Voltar aos pedidos" />
+        <p className="eyebrow">Pedido</p>
+        <h1 className="display mt-2 text-4xl">Detalhe</h1>
+        <DbUnavailableBanner />
+      </AdminShell>
+    );
+  }
+
   if (!order) notFound();
 
   return (
     <AdminShell>
+      <AdminBackLink href="/admin/pedidos" label="Voltar aos pedidos" />
       <p className="eyebrow">Pedido</p>
       <h1 className="display mt-2 text-4xl">{order.number}</h1>
       <p className="mt-3 text-sm text-taupe">

@@ -5,7 +5,13 @@ import { redirect } from "next/navigation";
 import { OrderStatus, ProductStatus, Role } from "@prisma/client";
 import { auth } from "@/auth";
 import { productFormSchema, categoryFormSchema } from "@/lib/validations";
-import { upsertProduct, addProductImage, deleteProductImage, deleteProduct } from "@/services/product.service";
+import {
+  upsertProduct,
+  addProductImage,
+  deleteProductImage,
+  deleteProduct,
+  setProductFeatured,
+} from "@/services/product.service";
 import { prisma } from "@/lib/prisma";
 import { upsertCategory, deleteCategory, toggleCategory } from "@/services/category.service";
 import { updateOrderStatus } from "@/services/order.service";
@@ -62,6 +68,7 @@ export async function saveProductAction(_prev: { error?: string } | null, formDa
     }
     revalidatePath("/admin/produtos");
     revalidatePath(`/admin/produtos/${product.id}`);
+    revalidatePath("/admin/vitrine");
     revalidatePath("/produtos");
     revalidatePath("/");
     redirect(`/admin/produtos/${product.id}`);
@@ -118,6 +125,17 @@ export async function markSoldAction(formData: FormData) {
     data: { status: ProductStatus.SOLD, stock: 0 },
   });
   await revalidateProductById(id);
+}
+
+export async function toggleFeaturedAction(formData: FormData) {
+  await requireAdmin();
+  const id = String(formData.get("id"));
+  const featured = formData.get("featured") === "true";
+  await setProductFeatured(id, featured);
+  revalidatePath("/admin/vitrine");
+  revalidatePath("/admin/produtos");
+  revalidatePath("/");
+  revalidatePath("/produtos");
 }
 
 export async function deleteProductAction(formData: FormData) {

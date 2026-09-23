@@ -2,15 +2,15 @@ import Link, { type LinkProps } from "next/link";
 import { cn } from "@/lib/utils";
 
 const variants = {
-  primary: "bg-gold text-ink hover:bg-gold-deep",
+  primary: "bg-ink text-white hover:bg-wine",
   burgundy: "bg-burgundy text-ivory hover:bg-wine",
-  gold: "bg-gold text-ink hover:bg-gold-deep",
+  gold: "bg-gold text-white hover:bg-gold-deep",
   wine: "bg-wine text-ivory hover:bg-[#650000]",
   outline:
-    "border border-gold bg-transparent text-gold hover:bg-white hover:text-forest",
+    "border border-ink bg-transparent text-ink hover:bg-ink hover:text-white",
   ghost:
-    "border border-burgundy/20 bg-transparent text-burgundy hover:border-burgundy hover:bg-burgundy hover:text-ivory",
-  light: "bg-ivory text-burgundy hover:bg-cream",
+    "border border-ink/20 bg-transparent text-ink hover:border-ink hover:bg-ink hover:text-white",
+  light: "bg-ivory text-ink hover:bg-cream",
 };
 
 type Props = {

@@ -1,6 +1,7 @@
 import { SafeImage } from "@/components/ui/SafeImage";
 import Link from "next/link";
 import { AdminShell } from "@/components/admin/AdminShell";
+import { DbUnavailableBanner } from "@/components/admin/DbUnavailableBanner";
 import { listOrders } from "@/services/order.service";
 import { ORDER_STATUS_LABELS, PAYMENT_STATUS_LABELS } from "@/lib/constants";
 import { formatBRL } from "@/lib/format";
@@ -11,10 +12,10 @@ export const metadata = createMetadata({ title: "Pedidos", noIndex: true });
 
 const statusTone: Record<string, string> = {
   PENDING: "border-gold/50 bg-gold/15 text-burgundy",
-  PAID: "border-forest/30 bg-forest/10 text-forest",
+  PAID: "border-ink/30 bg-ink/10 text-ink",
   PROCESSING: "border-burgundy/20 bg-burgundy text-ivory",
   SHIPPED: "border-wine/30 bg-wine/10 text-wine",
-  DELIVERED: "border-forest/30 bg-forest text-white",
+  DELIVERED: "border-ink/30 bg-ink text-white",
   CANCELLED: "border-line bg-sand text-taupe",
 };
 
@@ -27,16 +28,24 @@ function formatOrderDate(value: Date) {
 }
 
 export default async function AdminOrdersPage() {
-  const orders = await listOrders();
+  let orders: Awaited<ReturnType<typeof listOrders>> = [];
+  let dbDown = false;
+  try {
+    orders = await listOrders();
+  } catch {
+    dbDown = true;
+  }
 
   return (
     <AdminShell>
       <p className="eyebrow">Vendas</p>
       <h1 className="display mt-2 text-4xl">Pedidos</h1>
       <p className="mt-2 max-w-xl text-sm text-taupe">Cada card mostra a situação atual e as peças do pedido.</p>
-      {orders.length === 0 ? (
+      {dbDown ? <DbUnavailableBanner /> : null}
+      {!dbDown && orders.length === 0 ? (
         <p className="mt-10 text-sm text-taupe">Nenhum pedido ainda.</p>
-      ) : (
+      ) : null}
+      {orders.length > 0 ? (
         <ul className="mt-8 grid gap-5 md:grid-cols-2">
           {orders.map((order) => (
             <li key={order.id}>
@@ -90,7 +99,7 @@ export default async function AdminOrdersPage() {
             </li>
           ))}
         </ul>
-      )}
+      ) : null}
     </AdminShell>
   );
 }

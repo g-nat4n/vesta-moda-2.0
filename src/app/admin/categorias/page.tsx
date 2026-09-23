@@ -1,4 +1,5 @@
 import { AdminShell } from "@/components/admin/AdminShell";
+import { DbUnavailableBanner } from "@/components/admin/DbUnavailableBanner";
 import { listCategories } from "@/services/category.service";
 import { saveCategoryAction, toggleCategoryAction, deleteCategoryAction } from "@/app/admin/actions";
 import { AdminMiniButton, ConfirmAction } from "@/components/admin/AdminActions";
@@ -11,7 +12,13 @@ export default async function AdminCategoriesPage({
   searchParams: Promise<{ aviso?: string }>;
 }) {
   const { aviso } = await searchParams;
-  const categories = await listCategories();
+  let categories: Awaited<ReturnType<typeof listCategories>> = [];
+  let dbDown = false;
+  try {
+    categories = await listCategories();
+  } catch {
+    dbDown = true;
+  }
 
   return (
     <AdminShell>
@@ -20,9 +27,11 @@ export default async function AdminCategoriesPage({
       <p className="mt-2 max-w-xl text-sm text-taupe">
         Desative para esconder na loja. Só exclua se não houver peças na categoria.
       </p>
+      {dbDown ? <DbUnavailableBanner /> : null}
       {aviso ? (
         <p className="mt-6 border border-wine/30 bg-wine/10 px-4 py-3 text-sm text-wine">{aviso}</p>
       ) : null}
+      {!dbDown ? (
       <form action={saveCategoryAction} className="mt-8 grid max-w-xl gap-3 border border-line bg-white p-6">
         <Input label="Nome" name="name" required />
         <Textarea label="Descrição" name="description" />
@@ -33,6 +42,7 @@ export default async function AdminCategoriesPage({
         </label>
         <Button type="submit">Criar categoria</Button>
       </form>
+      ) : null}
       <ul className="mt-10 grid max-w-3xl gap-4">
         {categories.map((category) => (
           <li key={category.id} className="flex flex-wrap items-center justify-between gap-4 border border-line bg-white p-5">

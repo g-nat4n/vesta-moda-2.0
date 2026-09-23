@@ -52,7 +52,7 @@ export function BrandSelect({
         aria-controls={listId}
         onClick={() => setOpen((current) => !current)}
         className={cn(
-          "flex w-full items-center justify-between border border-forest/25 bg-ivory px-4 py-3 text-left text-sm text-forest outline-none transition hover:border-gold hover:bg-sand focus-visible:border-gold",
+          "flex w-full items-center justify-between border border-ink/25 bg-ivory px-4 py-3 text-left text-sm text-ink outline-none transition hover:border-gold hover:bg-sand focus-visible:border-gold",
           triggerClassName,
         )}
       >

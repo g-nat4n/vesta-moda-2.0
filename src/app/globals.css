@@ -1,20 +1,19 @@
 @import "tailwindcss";
 
 @theme {
-  --color-ivory: #fcfaf5;
-  --color-cream: #f7f3ea;
-  --color-sand: #f2eee5;
-  --color-gold: #c9a44c;
-  --color-gold-deep: #a48438;
-  --color-burgundy: #400802;
-  --color-wine: #8b0000;
-  --color-forest: #284703;
-  --color-ink: #171611;
-  --color-taupe: #5a594f;
-  --color-line: #e4ddd0;
+  --color-ivory: #ffffff;
+  --color-cream: #faf9f7;
+  --color-sand: #f5f3f0;
+  --color-gold: #c45c26;
+  --color-gold-deep: #a3481f;
+  --color-burgundy: #2a1210;
+  --color-wine: #6b1c16;
+  --color-ink: #171411;
+  --color-taupe: #6b6660;
+  --color-line: #e8e4df;
   --font-serif: var(--font-playfair), "Playfair Display", serif;
   --font-sans: var(--font-arimo), "Arimo", sans-serif;
-  --shadow-soft: 0 24px 60px rgba(64, 8, 2, 0.12);
+  --shadow-soft: 0 24px 60px rgba(23, 20, 17, 0.1);
 }
 
 @layer base {
@@ -30,8 +29,8 @@
   }
 
   ::selection {
-    background: #c9a44c;
-    color: #400802;
+    background: #c45c26;
+    color: #ffffff;
   }
 
   :focus-visible {
@@ -71,8 +70,7 @@
   }
 
   .product-card:hover {
-    transform: translateY(-6px);
-    box-shadow: 0 22px 40px rgba(23, 22, 17, 0.13);
+    transform: translateY(-4px);
   }
 
   .eyebrow {
@@ -85,10 +83,70 @@
 
   .display {
     font-family: var(--font-serif), "Playfair Display", serif;
-    @apply font-semibold tracking-[-0.02em] text-burgundy;
+    @apply font-semibold tracking-[-0.02em] text-ink;
   }
 
   .gold-rule {
     @apply h-px w-16 bg-gold;
+  }
+
+  .nav-link {
+    @apply relative inline-flex items-center px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-taupe transition-colors duration-300;
+  }
+
+  .nav-link::after {
+    content: "";
+    position: absolute;
+    left: 0.75rem;
+    right: 0.75rem;
+    bottom: 0.35rem;
+    height: 1.5px;
+    background: var(--color-gold);
+    transform: scaleX(0);
+    transform-origin: left center;
+    transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .nav-link:hover,
+  .nav-link:focus-visible {
+    color: var(--color-gold);
+  }
+
+  .nav-link:hover::after,
+  .nav-link:focus-visible::after,
+  .nav-link[aria-current="page"]::after {
+    transform: scaleX(1);
+  }
+
+  .nav-link[aria-current="page"] {
+    color: var(--color-gold);
+  }
+
+  .nav-link-mobile {
+    @apply relative block px-2 py-3 text-sm font-semibold text-ink transition-colors duration-300;
+  }
+
+  .nav-link-mobile::after {
+    content: "";
+    position: absolute;
+    left: 0.5rem;
+    bottom: 0.55rem;
+    width: calc(100% - 1rem);
+    max-width: 4.5rem;
+    height: 1.5px;
+    background: var(--color-gold);
+    transform: scaleX(0);
+    transform-origin: left center;
+    transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .nav-link-mobile:hover,
+  .nav-link-mobile:focus-visible {
+    color: var(--color-gold);
+  }
+
+  .nav-link-mobile:hover::after,
+  .nav-link-mobile:focus-visible::after {
+    transform: scaleX(1);
   }
 }

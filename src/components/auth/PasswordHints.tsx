@@ -13,7 +13,7 @@ export function PasswordHints({ password }: { password: string }) {
     <ul className="mt-2 space-y-1 text-[11px] uppercase tracking-[0.12em] text-taupe">
       <li className="normal-case tracking-normal text-taupe">{PASSWORD_HINT}</li>
       {checks.map((item) => (
-        <li key={item.label} className={item.ok ? "text-forest" : "text-taupe"}>
+        <li key={item.label} className={item.ok ? "text-ink" : "text-taupe"}>
           {item.ok ? "●" : "○"} {item.label}
         </li>
       ))}

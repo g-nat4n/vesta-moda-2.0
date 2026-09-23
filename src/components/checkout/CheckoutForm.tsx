@@ -1,11 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Minus, Plus, Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { useCart } from "@/components/cart/CartProvider";
 import { formatBRL, formatCep, formatCpf, formatPhone } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import type { ShippingQuote } from "@/types";
 
 export function CheckoutForm({
@@ -16,7 +18,7 @@ export function CheckoutForm({
   defaultEmail: string;
 }) {
   const router = useRouter();
-  const { items, subtotalCents, clear } = useCart();
+  const { items, subtotalCents, clear, removeItem, setQuantity } = useCart();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [quotes, setQuotes] = useState<ShippingQuote[]>([]);
@@ -39,6 +41,7 @@ export function CheckoutForm({
 
   const shipping = quotes.find((quote) => quote.id === shippingId);
   const total = Math.max(subtotalCents - discount + (shipping?.priceCents ?? 0), 0);
+  const hasUnavailable = items.some((item) => item.stock < 1);
 
   function setField(key: keyof typeof form, value: string) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -98,6 +101,10 @@ export function CheckoutForm({
       setError("Sua sacola está vazia.");
       return;
     }
+    if (hasUnavailable) {
+      setError("Remova as peças indisponíveis antes de continuar.");
+      return;
+    }
     setPending(true);
     setError(null);
     const response = await fetch("/api/orders", {
@@ -106,7 +113,11 @@ export function CheckoutForm({
       body: JSON.stringify({
         ...form,
         shippingMethod: shippingId,
-        cart: items.map((item) => ({ productId: item.productId, quantity: item.quantity })),
+        cart: items.map((item) => ({
+          productId: item.productId,
+          slug: item.slug,
+          quantity: item.quantity,
+        })),
       }),
     });
     const data = await response.json();
@@ -123,47 +134,10 @@ export function CheckoutForm({
     router.push(`/pedido/${data.orderId}`);
   }
 
-  const summary = useMemo(
-    () => (
-      <aside className="h-fit bg-cream p-8">
-        <h2 className="display text-2xl">Pedido</h2>
-        <ul className="mt-6 space-y-3 text-sm">
-          {items.map((item) => (
-            <li key={item.productId} className="flex justify-between gap-4">
-              <span>
-                {item.name} · {item.size}
-              </span>
-              <span>{formatBRL(item.priceCents)}</span>
-            </li>
-          ))}
-        </ul>
-        <dl className="mt-6 space-y-2 text-sm">
-          <div className="flex justify-between">
-            <dt>Subtotal</dt>
-            <dd>{formatBRL(subtotalCents)}</dd>
-          </div>
-          <div className="flex justify-between">
-            <dt>Descontos</dt>
-            <dd>- {formatBRL(discount)}</dd>
-          </div>
-          <div className="flex justify-between">
-            <dt>Frete</dt>
-            <dd>{formatBRL(shipping?.priceCents ?? 0)}</dd>
-          </div>
-          <div className="flex justify-between border-t border-line pt-3">
-            <dt>Total</dt>
-            <dd>{formatBRL(total)}</dd>
-          </div>
-        </dl>
-      </aside>
-    ),
-    [items, subtotalCents, discount, shipping, total],
-  );
-
   return (
-    <form onSubmit={onSubmit} className="mt-10 grid gap-12 lg:grid-cols-[1.1fr_0.9fr]">
+    <form onSubmit={onSubmit} className="mt-10 grid gap-10 lg:grid-cols-[1fr_380px] lg:items-start">
       <div className="space-y-4">
-        <h2 className="display text-2xl">Dados e entrega</h2>
+        <h2 className="font-serif text-2xl text-ink">Dados e entrega</h2>
         <Input label="Nome completo" value={form.customerName} onChange={(e) => setField("customerName", e.target.value)} required />
         <Input label="E-mail" type="email" value={form.email} onChange={(e) => setField("email", e.target.value)} required />
         <div className="grid gap-4 md:grid-cols-2">
@@ -215,14 +189,131 @@ export function CheckoutForm({
           </button>
         </div>
         {error ? <p className="text-sm text-wine">{error}</p> : null}
-        <Button type="submit" className="w-full" disabled={pending || items.length === 0}>
+        <Button type="submit" className="w-full" disabled={pending || items.length === 0 || hasUnavailable}>
           {pending ? "Reservando peça..." : "Ir para o pagamento"}
         </Button>
         <p className="text-xs text-taupe">
           PIX, cartão e parcelamento via Mercado Pago. Dados do cartão não são armazenados na Vesta.
         </p>
       </div>
-      {summary}
+
+      <aside className="h-fit border border-line bg-cream p-6 sm:p-8 lg:sticky lg:top-28">
+        <h2 className="font-serif text-2xl text-ink">Seu pedido</h2>
+        <p className="mt-1 text-xs text-taupe">Confira o que você está levando</p>
+
+        {items.length === 0 ? (
+          <p className="mt-6 text-sm text-taupe">Sua sacola está vazia.</p>
+        ) : (
+          <ul className="mt-6 space-y-4">
+            {items.map((item) => {
+              const available = item.stock > 0;
+              const maxQty = item.uniquePiece ? 1 : Math.max(item.stock, 1);
+              const canDecrease = item.quantity > 1;
+              const canIncrease = !item.uniquePiece && item.quantity < item.stock;
+
+              return (
+                <li
+                  key={item.productId}
+                  className="flex gap-3 border-b border-line pb-4 last:border-b-0 last:pb-0"
+                >
+                  <div className="relative h-24 w-20 shrink-0 overflow-hidden bg-sand">
+                    {item.imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={item.imageUrl}
+                        alt={item.name}
+                        className={cn("h-full w-full object-cover", !available && "opacity-50 grayscale")}
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-[10px] text-taupe">
+                        Sem foto
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-[10px] uppercase tracking-[0.14em] text-taupe">{item.brand}</p>
+                        <p className="mt-0.5 text-sm font-semibold text-ink">{item.name}</p>
+                        <p className="mt-1 text-xs text-taupe">Tam. {item.size}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeItem(item.productId)}
+                        aria-label={`Remover ${item.name}`}
+                        className="shrink-0 p-1 text-taupe transition hover:text-wine"
+                      >
+                        <Trash2 className="h-4 w-4" strokeWidth={1.75} />
+                      </button>
+                    </div>
+
+                    <p
+                      className={cn(
+                        "mt-2 text-[11px] font-semibold uppercase tracking-[0.12em]",
+                        available ? "text-ink" : "text-wine",
+                      )}
+                    >
+                      {available
+                        ? item.uniquePiece
+                          ? "Disponível · peça única"
+                          : `Disponível · ${item.stock} em estoque`
+                        : "Indisponível"}
+                    </p>
+
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                      <div className="inline-flex items-center border border-line bg-white">
+                        <button
+                          type="button"
+                          aria-label="Diminuir quantidade"
+                          disabled={!canDecrease || !available}
+                          onClick={() => setQuantity(item.productId, item.quantity - 1)}
+                          className="flex h-8 w-8 items-center justify-center text-ink transition hover:bg-sand disabled:cursor-not-allowed disabled:opacity-35"
+                        >
+                          <Minus className="h-3.5 w-3.5" strokeWidth={2} />
+                        </button>
+                        <span className="min-w-8 text-center text-sm font-semibold tabular-nums text-ink">
+                          {item.quantity}
+                        </span>
+                        <button
+                          type="button"
+                          aria-label="Aumentar quantidade"
+                          disabled={!canIncrease || !available}
+                          onClick={() => setQuantity(item.productId, Math.min(item.quantity + 1, maxQty))}
+                          className="flex h-8 w-8 items-center justify-center text-ink transition hover:bg-sand disabled:cursor-not-allowed disabled:opacity-35"
+                        >
+                          <Plus className="h-3.5 w-3.5" strokeWidth={2} />
+                        </button>
+                      </div>
+                      <p className="text-sm font-bold text-ink">
+                        {formatBRL(item.priceCents * item.quantity)}
+                      </p>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        <dl className="mt-6 space-y-2 border-t border-line pt-4 text-sm">
+          <div className="flex justify-between">
+            <dt className="text-taupe">Subtotal</dt>
+            <dd className="font-medium text-ink">{formatBRL(subtotalCents)}</dd>
+          </div>
+          <div className="flex justify-between">
+            <dt className="text-taupe">Descontos</dt>
+            <dd className="font-medium text-ink">- {formatBRL(discount)}</dd>
+          </div>
+          <div className="flex justify-between">
+            <dt className="text-taupe">Frete</dt>
+            <dd className="font-medium text-ink">{formatBRL(shipping?.priceCents ?? 0)}</dd>
+          </div>
+          <div className="flex justify-between border-t border-line pt-3 text-base">
+            <dt className="font-semibold text-ink">Total</dt>
+            <dd className="font-bold text-ink">{formatBRL(total)}</dd>
+          </div>
+        </dl>
+      </aside>
     </form>
   );
 }

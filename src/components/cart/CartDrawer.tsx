@@ -41,13 +41,13 @@ export function CartDrawer() {
                 <p className="text-xs font-bold uppercase tracking-[0.15em] text-wine">Sua seleção</p>
                 <h2 className="mt-1 font-serif text-2xl text-ink">Sacola Vesta</h2>
               </div>
-              <button type="button" onClick={closeCart} className="p-2 text-forest" aria-label="Fechar">
+              <button type="button" onClick={closeCart} className="p-2 text-ink" aria-label="Fechar">
                 <X className="h-5 w-5" />
               </button>
             </div>
             <div className="flex-1 overflow-y-auto px-6 py-6">
               {items.length === 0 ? (
-                <p className="font-serif text-xl text-forest">
+                <p className="font-serif text-xl text-ink">
                   Sua sacola está esperando uma escolha especial.
                 </p>
               ) : (
@@ -74,7 +74,7 @@ export function CartDrawer() {
             <div className="h-3 bg-sand" aria-hidden />
             <div className="border-t border-line bg-white px-6 py-5">
               <div className="mb-4 flex items-center justify-between text-sm">
-                <span className="text-forest">Subtotal</span>
+                <span className="text-ink">Subtotal</span>
                 <span className="font-bold text-wine">{formatBRL(subtotalCents)}</span>
               </div>
               <Button href="/checkout" className="w-full" onClick={closeCart} variant="wine">

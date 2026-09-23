@@ -51,7 +51,7 @@ export function ImageUpload({ productId }: { productId: string }) {
       </label>
       <p className="mt-2 text-xs text-taupe">Pode selecionar várias fotos de uma vez (JPG, PNG, WEBP ou GIF, até 8 MB cada).</p>
       {pending ? <p className="mt-2 text-xs text-taupe">Enviando...</p> : null}
-      {!pending && message ? <p className="mt-2 text-xs text-forest">{message}</p> : null}
+      {!pending && message ? <p className="mt-2 text-xs text-ink">{message}</p> : null}
     </div>
   );
 }

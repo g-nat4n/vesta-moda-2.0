@@ -36,37 +36,38 @@ export function Header() {
   return (
     <header
       className={cn(
-        "sticky top-0 z-40 w-full border-b border-gold/30 bg-ivory/90 backdrop-blur-sm transition",
-        scrolled && "bg-ivory/97 shadow-[0_8px_28px_rgba(23,22,17,0.09)]",
+        "sticky top-0 z-40 w-full border-b border-line bg-white/95 backdrop-blur-sm transition",
+        scrolled && "shadow-[0_8px_28px_rgba(23,20,17,0.06)]",
       )}
     >
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-3 py-3 sm:px-5 sm:py-4 lg:px-8">
         <Link
           href="/"
-          className="shrink-0 font-serif text-lg font-semibold tracking-[0.14em] text-burgundy sm:text-2xl sm:tracking-[0.18em]"
+          className="shrink-0 font-serif text-lg font-semibold tracking-[0.18em] text-ink sm:text-2xl sm:tracking-[0.22em]"
         >
           {BRAND.wordmark}
         </Link>
 
         <nav className="hidden min-w-0 items-center gap-1 xl:flex" aria-label="Navegação principal">
-          {NAV_LINKS.map((link) => (
-            <Link
-              key={link.label}
-              href={link.href}
-              className={cn(
-                "inline-flex items-center px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-gold transition hover:bg-gold/15 hover:text-burgundy",
-                pathname === link.href && link.href !== "/#categorias" && "bg-gold/15 text-burgundy",
-              )}
-            >
-              {link.label}
-            </Link>
-          ))}
+          {NAV_LINKS.map((link) => {
+            const active = pathname === link.href && link.href !== "/#categorias";
+            return (
+              <Link
+                key={link.label}
+                href={link.href}
+                className="nav-link"
+                aria-current={active ? "page" : undefined}
+              >
+                {link.label}
+              </Link>
+            );
+          })}
         </nav>
 
         <div className="flex items-center gap-0.5 sm:gap-1">
           <button
             type="button"
-            className="rounded-full p-2 text-ink hover:bg-black/10"
+            className="rounded-full p-2 text-ink transition hover:bg-black/5"
             aria-label="Abrir busca"
             onClick={() => setSearchOpen((value) => !value)}
           >
@@ -74,27 +75,27 @@ export function Header() {
           </button>
           <Link
             href={data?.user ? "/minha-conta" : "/login"}
-            className="rounded-full p-2 text-ink hover:bg-black/10"
+            className="rounded-full p-2 text-ink transition hover:bg-black/5"
             aria-label={data?.user ? "Minha conta" : "Entrar"}
           >
             <User className="h-[19px] w-[19px]" strokeWidth={2} />
           </Link>
           <button
             type="button"
-            className="relative rounded-full p-2 text-forest hover:bg-forest/10"
+            className="relative rounded-full p-2 text-ink transition hover:bg-black/5"
             aria-label="Abrir sacola"
             onClick={openCart}
           >
             <ShoppingBag className="h-[19px] w-[19px]" strokeWidth={2} />
             {count > 0 ? (
-              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-wine px-1 text-[10px] leading-4 text-white">
+              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-gold px-1 text-[10px] leading-4 text-white">
                 {count}
               </span>
             ) : null}
           </button>
           <button
             type="button"
-            className="ml-1 rounded-full p-2 text-forest hover:bg-forest/10 xl:hidden"
+            className="ml-1 rounded-full p-2 text-ink transition hover:bg-black/5 xl:hidden"
             onClick={() => setOpen((value) => !value)}
             aria-expanded={open}
             aria-label={open ? "Fechar menu" : "Abrir menu"}
@@ -108,7 +109,7 @@ export function Header() {
         {searchOpen ? (
           <motion.form
             action="/produtos"
-            className="border-t border-gold/30 bg-ivory px-5 py-4 lg:px-8"
+            className="border-t border-line bg-white px-5 py-4 lg:px-8"
             initial={reduced ? false : { height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={reduced ? undefined : { height: 0, opacity: 0 }}
@@ -120,7 +121,7 @@ export function Header() {
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Buscar peça ou estilo"
-                className="h-12 w-full border border-forest/25 bg-white px-4 text-sm outline-none"
+                className="h-12 w-full border border-line bg-cream px-4 text-sm text-ink outline-none focus:border-ink"
               />
             </label>
           </motion.form>
@@ -130,7 +131,7 @@ export function Header() {
       <AnimatePresence>
         {open ? (
           <motion.nav
-            className="border-t border-gold/30 bg-ivory xl:hidden"
+            className="border-t border-line bg-white xl:hidden"
             initial={reduced ? false : { height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={reduced ? undefined : { height: 0, opacity: 0 }}
@@ -142,8 +143,8 @@ export function Header() {
                   key={link.label}
                   href={link.href}
                   className={cn(
-                    "-mx-2 px-2 py-3 text-sm font-semibold text-gold transition hover:bg-gold/15 hover:text-burgundy",
-                    index < NAV_LINKS.length - 1 && "border-b border-black/10",
+                    "nav-link-mobile",
+                    index < NAV_LINKS.length - 1 && "border-b border-line",
                   )}
                 >
                   {link.label}
@@ -151,7 +152,7 @@ export function Header() {
               ))}
               <Link
                 href={data?.user ? "/minha-conta" : "/login"}
-                className="mt-2 border-t border-black/10 py-3 text-sm font-semibold text-burgundy"
+                className="mt-2 border-t border-line py-3 text-sm font-semibold text-ink transition hover:text-gold"
               >
                 {data?.user ? "Minha conta" : "Entrar"}
               </Link>

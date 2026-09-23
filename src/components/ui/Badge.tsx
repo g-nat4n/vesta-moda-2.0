@@ -6,13 +6,12 @@ export function Badge({
   className,
 }: {
   children: React.ReactNode;
-  tone?: "gold" | "wine" | "forest" | "ink";
+  tone?: "gold" | "wine" | "ink";
   className?: string;
 }) {
   const tones = {
     gold: "bg-gold/15 text-gold-deep",
     wine: "bg-wine/10 text-wine",
-    forest: "bg-forest/10 text-forest",
     ink: "bg-ink/10 text-ink",
   };
 

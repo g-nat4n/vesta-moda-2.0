@@ -9,7 +9,7 @@ const miniBase =
 
 const miniTones = {
   edit: "border-gold/50 text-burgundy hover:border-gold hover:bg-gold hover:text-ink",
-  archive: "border-forest/30 text-forest hover:border-forest hover:bg-forest hover:text-white",
+  archive: "border-ink/30 text-ink hover:border-ink hover:bg-ink hover:text-white",
   sold: "border-ink/20 text-ink hover:bg-ink hover:text-white",
   delete: "border-wine/35 text-wine hover:border-wine hover:bg-wine hover:text-white",
   restore: "border-burgundy/25 text-burgundy hover:bg-burgundy hover:text-white",

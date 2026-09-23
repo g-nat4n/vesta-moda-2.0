@@ -1,11 +1,19 @@
 import { notFound } from "next/navigation";
 import { AdminShell } from "@/components/admin/AdminShell";
+import { AdminBackLink } from "@/components/admin/AdminBackLink";
+import { DbUnavailableBanner } from "@/components/admin/DbUnavailableBanner";
 import { ProductForm } from "@/components/admin/ProductForm";
 import { getProductById } from "@/services/product.service";
 import { listCategories } from "@/services/category.service";
 import { prisma } from "@/lib/prisma";
 import { ImageUpload } from "@/components/admin/ImageUpload";
-import { addImageByUrlAction, archiveProductAction, deleteProductAction, deleteProductImageAction, markSoldAction } from "@/app/admin/actions";
+import {
+  addImageByUrlAction,
+  archiveProductAction,
+  deleteProductAction,
+  deleteProductImageAction,
+  markSoldAction,
+} from "@/app/admin/actions";
 import { AdminMiniButton, ConfirmAction } from "@/components/admin/AdminActions";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -15,15 +23,40 @@ type Params = Promise<{ id: string }>;
 
 export default async function EditProductPage({ params }: { params: Params }) {
   const { id } = await params;
-  const [product, categories, looks] = await Promise.all([
-    getProductById(id),
-    listCategories(),
-    prisma.look.findMany(),
-  ]);
+  let product: Awaited<ReturnType<typeof getProductById>> = null;
+  let categories: Awaited<ReturnType<typeof listCategories>> = [];
+  let looks: { id: string; name: string }[] = [];
+  let dbDown = false;
+
+  try {
+    const [p, cats, lookRows] = await Promise.all([
+      getProductById(id),
+      listCategories(),
+      prisma.look.findMany(),
+    ]);
+    product = p;
+    categories = cats;
+    looks = lookRows;
+  } catch {
+    dbDown = true;
+  }
+
+  if (dbDown) {
+    return (
+      <AdminShell>
+        <AdminBackLink href="/admin/produtos" label="Voltar aos produtos" />
+        <p className="eyebrow">Acervo</p>
+        <h1 className="display mt-2 text-4xl">Editar peça</h1>
+        <DbUnavailableBanner />
+      </AdminShell>
+    );
+  }
+
   if (!product) notFound();
 
   return (
     <AdminShell>
+      <AdminBackLink href="/admin/produtos" label="Voltar aos produtos" />
       <p className="eyebrow">Acervo</p>
       <h1 className="display mt-2 text-4xl">Editar peça</h1>
       <div className="mt-4 flex flex-wrap gap-2">

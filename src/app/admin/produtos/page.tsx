@@ -1,6 +1,7 @@
 import { SafeImage } from "@/components/ui/SafeImage";
 import Link from "next/link";
 import { AdminShell } from "@/components/admin/AdminShell";
+import { DbUnavailableBanner } from "@/components/admin/DbUnavailableBanner";
 import { listAdminProducts } from "@/services/product.service";
 import { PRODUCT_STATUS_LABELS } from "@/lib/constants";
 import { formatBRL } from "@/lib/format";
@@ -9,6 +10,7 @@ import {
   deleteProductAction,
   markSoldAction,
   restoreProductAction,
+  toggleFeaturedAction,
 } from "@/app/admin/actions";
 import { AdminMiniButton, AdminMiniLink, ConfirmAction } from "@/components/admin/AdminActions";
 import { Button } from "@/components/ui/Button";
@@ -18,7 +20,7 @@ import { cn } from "@/lib/utils";
 export const metadata = createMetadata({ title: "Produtos", path: "/admin/produtos", noIndex: true });
 
 const statusTone: Record<string, string> = {
-  AVAILABLE: "border-forest/30 bg-forest/10 text-forest",
+  AVAILABLE: "border-ink/30 bg-ink/10 text-ink",
   SOLD: "border-ink/20 bg-ink text-white",
   ARCHIVED: "border-line bg-sand text-taupe",
   RESERVED: "border-gold/40 bg-gold/15 text-burgundy",
@@ -31,7 +33,13 @@ export default async function AdminProductsPage({
   searchParams: Promise<{ aviso?: string }>;
 }) {
   const { aviso } = await searchParams;
-  const products = await listAdminProducts();
+  let products: Awaited<ReturnType<typeof listAdminProducts>> = [];
+  let dbDown = false;
+  try {
+    products = await listAdminProducts();
+  } catch {
+    dbDown = true;
+  }
 
   return (
     <AdminShell>
@@ -45,12 +53,14 @@ export default async function AdminProductsPage({
         </div>
         <Button href="/admin/produtos/novo">Nova peça</Button>
       </div>
+      {dbDown ? <DbUnavailableBanner /> : null}
       {aviso ? (
         <p className="mt-6 border border-wine/30 bg-wine/10 px-4 py-3 text-sm text-wine">{aviso}</p>
       ) : null}
-      {products.length === 0 ? (
+      {!dbDown && products.length === 0 ? (
         <p className="mt-10 text-sm text-taupe">Nenhuma peça cadastrada ainda.</p>
-      ) : (
+      ) : null}
+      {products.length > 0 ? (
         <ul className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {products.map((product) => {
             const image = product.images[0];
@@ -77,6 +87,11 @@ export default async function AdminProductsPage({
                           Vendida
                         </span>
                       ) : null}
+                      {product.featured ? (
+                        <span className="absolute left-2 top-2 bg-gold px-2 py-1 text-[9px] font-bold uppercase tracking-[0.12em] text-ink">
+                          Home
+                        </span>
+                      ) : null}
                     </div>
                     <div className="pt-2.5">
                       <p className="text-[9px] uppercase tracking-[0.14em] text-taupe">
@@ -96,6 +111,13 @@ export default async function AdminProductsPage({
                   </Link>
                   <div className="mt-2.5 flex flex-wrap gap-1.5">
                     <AdminMiniLink href={`/admin/produtos/${product.id}`}>Editar</AdminMiniLink>
+                    <form action={toggleFeaturedAction}>
+                      <input type="hidden" name="id" value={product.id} />
+                      <input type="hidden" name="featured" value={product.featured ? "false" : "true"} />
+                      <AdminMiniButton tone={product.featured ? "archive" : "restore"}>
+                        {product.featured ? "Tirar da home" : "Na home"}
+                      </AdminMiniButton>
+                    </form>
                     {product.status === "AVAILABLE" ? (
                       <ConfirmAction action={markSoldAction} message="Marcar esta peça como vendida? Ela aparece vendida na loja.">
                         <input type="hidden" name="id" value={product.id} />
@@ -132,7 +154,7 @@ export default async function AdminProductsPage({
             );
           })}
         </ul>
-      )}
+      ) : null}
     </AdminShell>
   );
 }

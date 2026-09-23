@@ -8,6 +8,7 @@ import { applyCoupon } from "@/services/coupon.service";
 type CartSnapshot = {
   productId: string;
   quantity: number;
+  slug?: string;
 };
 
 export async function createOrder(input: CheckoutInput, cart: CartSnapshot[], userId?: string) {
@@ -16,18 +17,32 @@ export async function createOrder(input: CheckoutInput, cart: CartSnapshot[], us
   }
 
   return prisma.$transaction(async (tx) => {
+    const keys = [...new Set(cart.flatMap((item) => [item.productId, item.slug].filter(Boolean) as string[]))];
+
     const products = await tx.product.findMany({
-      where: { id: { in: cart.map((item) => item.productId) } },
+      where: {
+        OR: [{ id: { in: keys } }, { slug: { in: keys } }],
+      },
       include: { images: { orderBy: { sortOrder: "asc" } } },
     });
 
-    if (products.length !== cart.length) {
-      throw new Error("Uma das peças não está mais disponível.");
+    const resolveProduct = (item: CartSnapshot) =>
+      products.find(
+        (entry) =>
+          entry.id === item.productId ||
+          entry.slug === item.productId ||
+          (item.slug ? entry.slug === item.slug || entry.id === item.slug : false),
+      );
+
+    const missing = cart.filter((item) => !resolveProduct(item));
+    if (missing.length > 0) {
+      throw new Error(
+        "Uma das peças não está mais disponível. Remova da sacola e adicione de novo pela Curadoria.",
+      );
     }
 
     const lines = cart.map((item) => {
-      const product = products.find((entry) => entry.id === item.productId);
-      if (!product) throw new Error("Peça não encontrada.");
+      const product = resolveProduct(item)!;
       if (product.status !== ProductStatus.AVAILABLE || product.stock < item.quantity) {
         throw new Error(`${product.name} não está mais disponível.`);
       }
@@ -102,9 +117,10 @@ export async function createOrder(input: CheckoutInput, cart: CartSnapshot[], us
         where: { id: product.id },
         data: {
           stock: { decrement: item.quantity },
-          status: product.uniquePiece || product.stock - item.quantity <= 0
-            ? ProductStatus.RESERVED
-            : ProductStatus.AVAILABLE,
+          status:
+            product.uniquePiece || product.stock - item.quantity <= 0
+              ? ProductStatus.RESERVED
+              : ProductStatus.AVAILABLE,
         },
       });
     }

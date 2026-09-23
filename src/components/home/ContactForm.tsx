@@ -40,21 +40,21 @@ export function ContactForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="bg-ivory p-7 sm:p-9">
+    <form onSubmit={onSubmit} className="border border-line bg-cream p-7 sm:p-9">
       <div className="grid gap-5 sm:grid-cols-2">
         <div>
-          <label className="mb-2 block text-sm font-bold text-forest" htmlFor="contact-name">
+          <label className="mb-2 block text-sm font-bold text-ink" htmlFor="contact-name">
             {contact.name}
           </label>
           <input
             id="contact-name"
             name="name"
             required
-            className="w-full border border-forest/30 bg-white px-4 py-3 text-sm outline-none focus:border-gold"
+            className="w-full border border-line bg-white px-4 py-3 text-sm outline-none focus:border-ink"
           />
         </div>
         <div>
-          <label className="mb-2 block text-sm font-bold text-forest" htmlFor="contact-email">
+          <label className="mb-2 block text-sm font-bold text-ink" htmlFor="contact-email">
             {contact.email}
           </label>
           <input
@@ -62,19 +62,19 @@ export function ContactForm() {
             name="email"
             type="email"
             required
-            className="w-full border border-forest/30 bg-white px-4 py-3 text-sm outline-none focus:border-gold"
+            className="w-full border border-line bg-white px-4 py-3 text-sm outline-none focus:border-ink"
           />
         </div>
       </div>
       <div className="mt-5">
-        <label className="mb-2 block text-sm font-bold text-forest" htmlFor="contact-whatsapp">
-          {contact.whatsapp} <span className="font-normal">{contact.whatsappOptional}</span>
+        <label className="mb-2 block text-sm font-bold text-ink" htmlFor="contact-whatsapp">
+          {contact.whatsapp} <span className="font-normal text-taupe">{contact.whatsappOptional}</span>
         </label>
         <input
           id="contact-whatsapp"
           name="whatsapp"
           type="tel"
-          className="w-full border border-forest/30 bg-white px-4 py-3 text-sm outline-none focus:border-gold"
+          className="w-full border border-line bg-white px-4 py-3 text-sm outline-none focus:border-ink"
         />
       </div>
       <div className="mt-5">
@@ -86,18 +86,18 @@ export function ContactForm() {
           name="message"
           rows={5}
           required
-          className="w-full border border-forest/30 bg-white px-4 py-3 text-sm outline-none focus:border-gold"
+          className="w-full border border-line bg-white px-4 py-3 text-sm outline-none focus:border-ink"
         />
       </div>
       {feedback ? (
-        <p className={`mt-4 text-sm ${status === "error" ? "text-wine" : "text-forest"}`} aria-live="polite">
+        <p className={`mt-4 text-sm ${status === "error" ? "text-wine" : "text-ink"}`} aria-live="polite">
           {feedback}
         </p>
       ) : null}
       <button
         type="submit"
         disabled={status === "sending"}
-        className="mt-6 inline-flex w-full items-center justify-center gap-2 bg-wine px-5 py-3 text-sm font-bold text-white transition hover:bg-[#650000] disabled:opacity-50"
+        className="mt-6 inline-flex w-full items-center justify-center gap-2 bg-ink px-5 py-3 text-sm font-bold text-white transition hover:bg-wine disabled:opacity-50"
       >
         {contact.submit}
         <Send className="h-4 w-4" />

@@ -176,6 +176,29 @@ export async function listAdminProducts() {
   });
 }
 
+export async function listFeaturedProducts(limit = 24) {
+  return prisma.product.findMany({
+    where: {
+      featured: true,
+      status: ProductStatus.AVAILABLE,
+      stock: { gt: 0 },
+    },
+    include: {
+      images: { orderBy: { sortOrder: "asc" }, take: 1 },
+      category: true,
+    },
+    orderBy: { updatedAt: "desc" },
+    take: limit,
+  });
+}
+
+export async function setProductFeatured(id: string, featured: boolean) {
+  return prisma.product.update({
+    where: { id },
+    data: { featured },
+  });
+}
+
 export async function getProductById(id: string) {
   return prisma.product.findUnique({
     where: { id },

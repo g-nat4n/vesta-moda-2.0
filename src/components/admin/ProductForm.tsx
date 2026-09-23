@@ -104,9 +104,14 @@ export function ProductForm({
         <Input label="Comp." name="length" defaultValue={measurements.length} />
         <Input label="Ombro" name="shoulder" defaultValue={measurements.shoulder} />
       </div>
-      <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" name="featured" defaultChecked={product?.featured} />
-        Destaque
+      <label className="flex items-start gap-2 text-sm">
+        <input type="checkbox" name="featured" defaultChecked={product?.featured} className="mt-1" />
+        <span>
+          <span className="font-medium text-ink">Destaque na home</span>
+          <span className="mt-0.5 block text-xs text-taupe">
+            Aparece em Best Sellers e na tela inicial (quando disponível).
+          </span>
+        </span>
       </label>
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" name="uniquePiece" defaultChecked={product?.uniquePiece ?? true} />

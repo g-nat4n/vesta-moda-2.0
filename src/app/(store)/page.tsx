@@ -1,12 +1,17 @@
 import { StoreShell } from "@/components/layout/StoreShell";
 import { Hero } from "@/components/home/Hero";
-import { Manifesto } from "@/components/home/Manifesto";
-import { CategoryChips, ContactBand, EditorialLook, JournalTeaser } from "@/components/home/Sections";
-import { FeaturedCuradoria } from "@/components/home/FeaturedCuradoria";
+import { TrustBar } from "@/components/home/TrustBar";
+import { ProductCarousel } from "@/components/home/ProductCarousel";
+import { CategoryTiles } from "@/components/home/CategoryTiles";
+import { EditorialLook } from "@/components/home/EditorialLook";
 import { TestimonialsCarousel } from "@/components/home/TestimonialsCarousel";
-import { getProductsBySlugs } from "@/services/product.service";
-import { FEATURED_PIECES } from "@/lib/brand";
+import { FaqSection } from "@/components/home/FaqSection";
+import { ContactBand } from "@/components/home/Sections";
+import { listFeaturedProducts } from "@/services/product.service";
+import { BRAND, FEATURED_PIECES } from "@/lib/brand";
+import { pieceToCard } from "@/lib/demo-catalog";
 import { createMetadata } from "@/lib/seo";
+import type { ShopCardProduct } from "@/components/home/ShopProductCard";
 
 export const metadata = createMetadata({
   title: "Vesta Moda Pre-Owned",
@@ -15,40 +20,80 @@ export const metadata = createMetadata({
   path: "/",
 });
 
+type FeaturedRow = Awaited<ReturnType<typeof listFeaturedProducts>>[number];
+
+function dbToCard(product: FeaturedRow): ShopCardProduct {
+  const image = product.images[0]?.url ?? "/placeholder-product.jpg";
+  const compareAt = product.compareAtCents ?? Math.round(product.priceCents * 1.25);
+  return {
+    category: product.category.name,
+    categorySlug: product.category.slug,
+    rating: 4.8,
+    reviews: 12,
+    compareAtCents: compareAt,
+    colors: [{ name: product.color, hex: "#8B7355" }],
+    badge: product.featured ? "Destaque" : undefined,
+    sold: product.status !== "AVAILABLE" || product.stock <= 0,
+    alt: product.name,
+    item: {
+      productId: product.id,
+      slug: product.slug,
+      name: product.name,
+      brand: product.brand,
+      size: product.size,
+      priceCents: product.priceCents,
+      imageUrl: image,
+      uniquePiece: product.uniquePiece,
+      stock: product.stock,
+      quantity: 1,
+    },
+  };
+}
+
+function demoCards() {
+  const cards = FEATURED_PIECES.map((piece) => pieceToCard(piece));
+  const bestSellers = FEATURED_PIECES.filter((p) => p.isBestSeller).map((piece) => pieceToCard(piece));
+  const launches = FEATURED_PIECES.filter((p) => p.isLaunch).map((piece) => pieceToCard(piece));
+  return {
+    bestSellers: bestSellers.length ? bestSellers : cards,
+    launches: launches.length ? launches : cards,
+  };
+}
+
 export default async function HomePage() {
-  const products = await getProductsBySlugs(FEATURED_PIECES.map((piece) => piece.slug));
-  const cards = FEATURED_PIECES.map((piece) => {
-    const product = products.find((item) => item.slug === piece.slug);
-    return {
-      meta: piece.meta,
-      category: piece.category,
-      style: piece.style,
-      sold: product ? product.status !== "AVAILABLE" || product.stock <= 0 : false,
-      alt: piece.alt,
-      item: {
-        productId: product?.id ?? piece.slug,
-        slug: piece.slug,
-        name: piece.name,
-        brand: piece.brand,
-        size: piece.size,
-        priceCents: piece.priceCents,
-        imageUrl: piece.image,
-        uniquePiece: true,
-        stock: product?.stock ?? 1,
-        quantity: 1,
-      },
-    };
-  });
+  let featured: FeaturedRow[] = [];
+  try {
+    featured = await listFeaturedProducts(24);
+  } catch {
+    featured = [];
+  }
+
+  const fromDb = featured.length > 0;
+  const cards = fromDb ? featured.map(dbToCard) : [];
+  const demo = fromDb ? null : demoCards();
+
+  const bestSellers = fromDb ? cards : demo!.bestSellers;
+  const launches = fromDb ? cards : demo!.launches;
 
   return (
     <StoreShell>
       <Hero />
-      <Manifesto />
-      <FeaturedCuradoria products={cards} />
-      <CategoryChips />
+      <TrustBar />
+      <ProductCarousel
+        id="best-sellers"
+        title={BRAND.bestSellers.title}
+        products={bestSellers}
+        tabs={BRAND.bestSellers.tabs}
+      />
+      <CategoryTiles />
+      <ProductCarousel
+        id="lancamentos"
+        title={BRAND.launches.title}
+        products={launches.length ? launches : bestSellers}
+      />
       <EditorialLook />
       <TestimonialsCarousel />
-      <JournalTeaser />
+      <FaqSection />
       <ContactBand />
     </StoreShell>
   );

@@ -16,8 +16,11 @@ export default function JournalPage() {
     <StoreShell>
       <section className="w-full bg-white px-6 py-20 lg:px-8">
         <div className="mx-auto max-w-7xl">
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-wine">{journal.kicker}</p>
-          <h1 className="mt-3 font-serif text-5xl font-semibold text-gold">{journal.title}</h1>
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-gold">{journal.kicker}</p>
+          <h1 className="mt-3 font-serif text-5xl font-semibold text-ink">{journal.title}</h1>
+          <p className="mt-4 max-w-xl text-sm text-taupe">
+            Notas de curadoria, uso e estilo — histórias em construção.
+          </p>
           <JournalGrid expandedByDefault />
         </div>
       </section>

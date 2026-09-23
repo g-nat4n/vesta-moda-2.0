@@ -16,7 +16,15 @@ export const metadata = createMetadata({
 export default async function AccountPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
-  const orders = await listOrdersByUser(session.user.id);
+
+  let orders: Awaited<ReturnType<typeof listOrdersByUser>> = [];
+  let ordersUnavailable = false;
+  try {
+    orders = await listOrdersByUser(session.user.id);
+  } catch {
+    orders = [];
+    ordersUnavailable = true;
+  }
 
   return (
     <StoreShell>
@@ -35,7 +43,13 @@ export default async function AccountPage() {
         <AccountBagCards />
 
         <h2 className="display mt-14 text-2xl">Pedidos feitos</h2>
-        <AccountOrderCards orders={orders} />
+        {ordersUnavailable ? (
+          <p className="mt-4 text-sm text-taupe">
+            Não foi possível carregar os pedidos agora. Tente de novo em instantes.
+          </p>
+        ) : (
+          <AccountOrderCards orders={orders} />
+        )}
 
         <form
           className="mt-12"
