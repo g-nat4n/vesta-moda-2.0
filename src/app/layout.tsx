@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Arimo, Playfair_Display } from "next/font/google";
 import { APP_NAME, APP_TAGLINE } from "@/lib/constants";
 import { Providers } from "@/components/layout/Providers";
+import { getSiteUrl } from "@/lib/site-url";
 import "./globals.css";
 
 const arimo = Arimo({
@@ -16,7 +17,7 @@ const playfair = Playfair_Display({
   weight: ["400", "500", "600", "700"],
 });
 
-const siteUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+const siteUrl = getSiteUrl();
 
 export const dynamic = "force-dynamic";
 

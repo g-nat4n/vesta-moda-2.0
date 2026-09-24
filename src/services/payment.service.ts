@@ -1,5 +1,6 @@
 import { MercadoPagoConfig, Preference, Payment } from "mercadopago";
 import { prisma } from "@/lib/prisma";
+import { getSiteUrl } from "@/lib/site-url";
 import { markOrderPaid, restoreOrderStock } from "@/services/order.service";
 import { PaymentStatus } from "@prisma/client";
 
@@ -10,7 +11,7 @@ function getClient() {
 }
 
 function appBaseUrl() {
-  return process.env.NEXT_PUBLIC_APP_URL ?? process.env.AUTH_URL ?? "http://localhost:3000";
+  return getSiteUrl();
 }
 
 function isPublicHttps(url: string) {

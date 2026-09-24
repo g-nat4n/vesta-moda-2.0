@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { APP_NAME, APP_TAGLINE } from "@/lib/constants";
+import { getSiteUrl } from "@/lib/site-url";
 
-const siteUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+const siteUrl = getSiteUrl();
 
 export function createMetadata({
   title,
