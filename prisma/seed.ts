@@ -453,16 +453,15 @@ async function main() {
       },
     });
     await prisma.productImage.deleteMany({ where: { productId: product.id } });
+    const imageUrls = piece.gallery?.length ? piece.gallery : [piece.image];
     await prisma.productImage.createMany({
-      data: [
-        {
-          productId: product.id,
-          url: piece.image,
-          alt: piece.alt,
-          kind: "MAIN",
-          sortOrder: 0,
-        },
-      ],
+      data: imageUrls.map((url, index) => ({
+        productId: product.id,
+        url,
+        alt: piece.alt,
+        kind: index === 0 ? "MAIN" : "DETAIL",
+        sortOrder: index,
+      })),
     });
   }
 

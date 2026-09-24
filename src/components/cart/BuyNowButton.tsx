@@ -5,7 +5,15 @@ import { Button } from "@/components/ui/Button";
 import { useCart } from "@/components/cart/CartProvider";
 import type { CartItem } from "@/types";
 
-export function BuyNowButton({ item, sold }: { item: CartItem; sold?: boolean }) {
+export function BuyNowButton({
+  item,
+  sold,
+  className,
+}: {
+  item: CartItem;
+  sold?: boolean;
+  className?: string;
+}) {
   const { addItem } = useCart();
   const router = useRouter();
 
@@ -15,7 +23,7 @@ export function BuyNowButton({ item, sold }: { item: CartItem; sold?: boolean })
     <Button
       type="button"
       variant="ghost"
-      className="w-full"
+      className={className ?? "w-full"}
       onClick={() => {
         addItem(item);
         router.push("/checkout");

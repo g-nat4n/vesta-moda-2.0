@@ -2,18 +2,20 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { StoreShell } from "@/components/layout/StoreShell";
 import { ProductGallery } from "@/components/product/ProductGallery";
+import { ProductStickyBuyBar } from "@/components/product/ProductStickyBuyBar";
 import { ProductCard } from "@/components/product/ProductCard";
 import { ShopProductCard } from "@/components/home/ShopProductCard";
 import { AddToCartButton } from "@/components/cart/AddToCartButton";
 import { ShippingEstimator } from "@/components/product/ShippingEstimator";
 import { Badge } from "@/components/ui/Badge";
-import { getProductBySlug, getRelatedProducts } from "@/services/product.service";
-import { getDemoPieceBySlug, filterDemoPieces } from "@/lib/demo-catalog";
+import { getProductBySlug, getRelatedProducts, getSuggestedProducts } from "@/services/product.service";
+import { getDemoPieceBySlug, filterDemoPieces, pieceToCard } from "@/lib/demo-catalog";
+import { RelatedProductRail, RelatedRailItem } from "@/components/product/RelatedProductRail";
+import { FEATURED_PIECES, type ShopPiece } from "@/lib/brand";
 import { CONDITION_LABELS } from "@/lib/constants";
 import { formatBRL } from "@/lib/format";
 import { createMetadata, productJsonLd } from "@/lib/seo";
 import { BuyNowButton } from "@/components/cart/BuyNowButton";
-import type { ShopPiece } from "@/lib/brand";
 
 type Params = Promise<{ slug: string }>;
 
@@ -72,6 +74,15 @@ async function DbProductView({
     brand: product.brand,
     priceCents: product.priceCents,
   });
+  let suggestions: Awaited<ReturnType<typeof getSuggestedProducts>> = [];
+  try {
+    suggestions = await getSuggestedProducts(
+      [product.id, ...related.map((item) => item.id)],
+      12,
+    );
+  } catch {
+    suggestions = [];
+  }
   const lookPieces = product.look?.products.filter((item) => item.id !== product.id) ?? [];
   const available = product.status === "AVAILABLE" && product.stock > 0;
   const measurements = (product.measurements ?? {}) as Record<string, string>;
@@ -85,75 +96,107 @@ async function DbProductView({
     available,
   });
 
+  const cartItem = {
+    productId: product.id,
+    slug: product.slug,
+    name: product.name,
+    brand: product.brand,
+    size: product.size,
+    priceCents: product.priceCents,
+    imageUrl: product.images[0]?.url ?? null,
+    uniquePiece: product.uniquePiece,
+    stock: product.stock,
+    quantity: 1,
+  };
+
   return (
     <StoreShell>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-      <section className="container-main grid gap-12 py-12 lg:grid-cols-2 lg:py-20">
-        <ProductGallery
-          images={product.images.map((image) => ({ url: image.url, alt: image.alt }))}
-          name={product.name}
-          sold={!available}
-        />
-        <ProductDetails
-          brand={product.brand}
-          categoryName={product.category.name}
-          name={product.name}
-          uniquePiece={product.uniquePiece}
-          available={available}
-          stock={product.stock}
-          priceCents={product.priceCents}
-          size={product.size}
-          color={product.color}
-          condition={product.condition}
-          description={product.description}
-          story={product.story}
-          measurements={measurements}
-          cartItem={{
-            productId: product.id,
-            slug: product.slug,
-            name: product.name,
-            brand: product.brand,
-            size: product.size,
-            priceCents: product.priceCents,
-            imageUrl: product.images[0]?.url ?? null,
-            uniquePiece: product.uniquePiece,
-            stock: product.stock,
-            quantity: 1,
-          }}
-        />
+      <section className="mx-auto grid w-full max-w-7xl gap-5 px-0 pb-28 pt-3 lg:grid-cols-2 lg:gap-12 lg:px-8 lg:pb-20 lg:pt-12">
+        <div>
+          <div className="px-4 pb-3 sm:px-6 lg:hidden">
+            <Link
+              href="/produtos"
+              className="inline-flex text-[11px] font-bold uppercase tracking-[0.14em] text-taupe transition hover:text-ink"
+            >
+              ← Voltar à curadoria
+            </Link>
+          </div>
+          <ProductGallery
+            images={product.images.map((image) => ({ url: image.url, alt: image.alt }))}
+            name={product.name}
+            sold={!available}
+          />
+        </div>
+        <div className="px-4 sm:px-6 lg:px-0">
+          <ProductDetails
+            brand={product.brand}
+            categoryName={product.category.name}
+            name={product.name}
+            uniquePiece={product.uniquePiece}
+            available={available}
+            stock={product.stock}
+            priceCents={product.priceCents}
+            size={product.size}
+            color={product.color}
+            condition={product.condition}
+            description={product.description}
+            story={product.story}
+            measurements={measurements}
+            cartItem={cartItem}
+          />
+        </div>
       </section>
 
       {lookPieces.length > 0 ? (
-        <section className="container-main pb-16">
-          <p className="eyebrow">Complete o look</p>
-          <h2 className="display mt-2 text-3xl">{product.look?.name}</h2>
-          <div className="mt-8 grid grid-cols-2 gap-6 md:grid-cols-4">
-            {lookPieces.map((item) => (
-              <ProductCard key={item.id} product={{ ...item, category: product.category }} />
-            ))}
-          </div>
-        </section>
+        <RelatedProductRail eyebrow="Complete o look" title={product.look?.name ?? "O look"}>
+          {lookPieces.map((item) => (
+            <RelatedRailItem key={item.id}>
+              <ProductCard product={{ ...item, category: product.category }} />
+            </RelatedRailItem>
+          ))}
+        </RelatedProductRail>
       ) : null}
 
       {related.length > 0 ? (
-        <section className="container-main pb-24">
-          <p className="eyebrow">Mesma categoria e peças semelhantes</p>
-          <h2 className="display mt-2 text-3xl">Outras peças na mesma direção</h2>
-          <div className="mt-8 grid grid-cols-2 gap-6 md:grid-cols-4">
-            {related.map((item) => (
-              <ProductCard key={item.id} product={item} />
-            ))}
-          </div>
-        </section>
+        <RelatedProductRail
+          eyebrow="Mesma categoria e peças semelhantes"
+          title="Outras peças na mesma direção"
+        >
+          {related.map((item) => (
+            <RelatedRailItem key={item.id}>
+              <ProductCard product={item} />
+            </RelatedRailItem>
+          ))}
+        </RelatedProductRail>
       ) : null}
+
+      {suggestions.length > 0 ? (
+        <RelatedProductRail eyebrow="Para você" title="Outras sugestões">
+          {suggestions.map((item) => (
+            <RelatedRailItem key={item.id}>
+              <ProductCard product={item} />
+            </RelatedRailItem>
+          ))}
+        </RelatedProductRail>
+      ) : null}
+
+      <div className="pb-8 lg:pb-12" />
+      <ProductStickyBuyBar item={cartItem} available={available} priceCents={product.priceCents} />
     </StoreShell>
   );
 }
 
 function DemoProductView({ piece }: { piece: ShopPiece }) {
-  const related = filterDemoPieces({ category: piece.categorySlug }).filter(
-    (card) => card.item.slug !== piece.slug,
-  );
+  const related = filterDemoPieces({ category: piece.categorySlug })
+    .filter((card) => card.item.slug !== piece.slug)
+    .slice(0, 12);
+  const suggestions = FEATURED_PIECES.filter(
+    (item) => item.slug !== piece.slug && item.categorySlug !== piece.categorySlug,
+  )
+    .slice(0, 12)
+    .map(pieceToCard);
+
   const jsonLd = productJsonLd({
     name: piece.name,
     description: piece.description,
@@ -164,56 +207,87 @@ function DemoProductView({ piece }: { piece: ShopPiece }) {
     available: true,
   });
 
+  const cartItem = {
+    productId: piece.slug,
+    slug: piece.slug,
+    name: piece.name,
+    brand: piece.brand,
+    size: piece.size,
+    priceCents: piece.priceCents,
+    imageUrl: piece.image,
+    uniquePiece: true,
+    stock: 1,
+    quantity: 1,
+  };
+
   return (
     <StoreShell>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-      <section className="container-main grid gap-12 py-12 lg:grid-cols-2 lg:py-20">
-        <ProductGallery images={[{ url: piece.image, alt: piece.alt }]} name={piece.name} sold={false} />
-        <ProductDetails
-          brand={piece.brand}
-          categoryName={piece.category}
-          name={piece.name}
-          uniquePiece
-          available
-          stock={1}
-          priceCents={piece.priceCents}
-          compareAtCents={piece.compareAtCents}
-          size={piece.size}
-          color={piece.color}
-          condition={piece.condition}
-          description={piece.description}
-          cartItem={{
-            productId: piece.slug,
-            slug: piece.slug,
-            name: piece.name,
-            brand: piece.brand,
-            size: piece.size,
-            priceCents: piece.priceCents,
-            imageUrl: piece.image,
-            uniquePiece: true,
-            stock: 1,
-            quantity: 1,
-          }}
-        />
+      <section className="mx-auto grid w-full max-w-7xl gap-5 px-0 pb-28 pt-3 lg:grid-cols-2 lg:gap-12 lg:px-8 lg:pb-20 lg:pt-12">
+        <div>
+          <div className="px-4 pb-3 sm:px-6 lg:hidden">
+            <Link
+              href="/produtos"
+              className="inline-flex text-[11px] font-bold uppercase tracking-[0.14em] text-taupe transition hover:text-ink"
+            >
+              ← Voltar à curadoria
+            </Link>
+          </div>
+          <ProductGallery
+            images={(piece.gallery?.length ? piece.gallery : [piece.image]).map((url) => ({
+              url,
+              alt: piece.alt,
+            }))}
+            name={piece.name}
+            sold={false}
+          />
+        </div>
+        <div className="px-4 sm:px-6 lg:px-0">
+          <ProductDetails
+            brand={piece.brand}
+            categoryName={piece.category}
+            name={piece.name}
+            uniquePiece
+            available
+            stock={1}
+            priceCents={piece.priceCents}
+            compareAtCents={piece.compareAtCents}
+            size={piece.size}
+            color={piece.color}
+            condition={piece.condition}
+            description={piece.description}
+            cartItem={cartItem}
+          />
+        </div>
       </section>
 
       {related.length > 0 ? (
-        <section className="container-main pb-24">
-          <p className="eyebrow">Mesma categoria</p>
-          <h2 className="display mt-2 text-3xl">Outras peças na mesma direção</h2>
-          <div className="mt-8 grid grid-cols-2 gap-6 md:grid-cols-4">
-            {related.slice(0, 4).map((card) => (
-              <ShopProductCard key={card.item.productId} product={card} variant="grid" />
-            ))}
-          </div>
-          <Link
-            href={`/produtos?category=${piece.categorySlug}`}
-            className="mt-8 inline-block text-sm font-bold uppercase tracking-[0.16em] text-ink underline decoration-gold decoration-2 underline-offset-8"
-          >
-            Ver mais em {piece.category}
-          </Link>
-        </section>
+        <RelatedProductRail eyebrow="Mesma categoria" title="Outras peças na mesma direção">
+          {related.map((card) => (
+            <RelatedRailItem key={card.item.productId}>
+              <ShopProductCard product={card} variant="grid" />
+            </RelatedRailItem>
+          ))}
+        </RelatedProductRail>
       ) : null}
+
+      {suggestions.length > 0 ? (
+        <RelatedProductRail eyebrow="Para você" title="Outras sugestões">
+          {suggestions.map((card) => (
+            <RelatedRailItem key={card.item.productId}>
+              <ShopProductCard product={card} variant="grid" />
+            </RelatedRailItem>
+          ))}
+        </RelatedProductRail>
+      ) : null}
+
+      <div className="pb-8 lg:pb-12" />
+      <ProductStickyBuyBar
+        item={cartItem}
+        available
+        priceCents={piece.priceCents}
+        compareAtCents={piece.compareAtCents}
+      />
     </StoreShell>
   );
 }
@@ -264,47 +338,67 @@ function ProductDetails({
 }) {
   return (
     <div>
-      <p className="text-[11px] uppercase tracking-[0.22em] text-taupe">
+      <Link
+        href="/produtos"
+        className="mb-4 hidden text-[11px] font-bold uppercase tracking-[0.14em] text-taupe transition hover:text-ink lg:inline-flex"
+      >
+        ← Voltar à curadoria
+      </Link>
+
+      <p className="text-[11px] uppercase tracking-[0.18em] text-taupe">
         {brand} · {categoryName}
       </p>
-      <h1 className="display mt-3 text-4xl md:text-5xl">{name}</h1>
-      <div className="mt-4 flex flex-wrap gap-2">
-        {uniquePiece ? <Badge>Peça única</Badge> : null}
-        {stock === 1 && available ? <Badge tone="wine">Última unidade disponível</Badge> : null}
-        {!available ? <Badge tone="ink">Vendida</Badge> : null}
-      </div>
-      <div className="mt-6 flex flex-wrap items-baseline gap-3">
-        <p className="font-serif text-3xl font-semibold text-ink">{formatBRL(priceCents)}</p>
+      <h1 className="mt-2 font-serif text-3xl font-semibold leading-tight text-ink sm:text-4xl lg:text-5xl">
+        {name}
+      </h1>
+
+      <div className="mt-3 flex flex-wrap items-baseline gap-2.5">
+        <p className="font-serif text-2xl font-semibold text-ink sm:text-3xl">{formatBRL(priceCents)}</p>
         {compareAtCents && compareAtCents > priceCents ? (
-          <p className="text-lg text-taupe line-through">{formatBRL(compareAtCents)}</p>
+          <p className="text-base text-taupe line-through">{formatBRL(compareAtCents)}</p>
         ) : null}
       </div>
-      <dl className="mt-8 grid grid-cols-2 gap-4 text-sm">
+
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {uniquePiece ? <Badge>Peça única</Badge> : null}
+        {stock === 1 && available ? <Badge tone="wine">Última unidade</Badge> : null}
+        {!available ? <Badge tone="ink">Vendida</Badge> : null}
+      </div>
+
+      <dl className="mt-5 grid grid-cols-2 gap-x-4 gap-y-3 border border-line bg-cream/60 p-4 text-sm">
         <div>
-          <dt className="text-[10px] uppercase tracking-[0.16em] text-taupe">Tamanho</dt>
-          <dd className="mt-1">{size}</dd>
+          <dt className="text-[10px] uppercase tracking-[0.14em] text-taupe">Tamanho</dt>
+          <dd className="mt-0.5 font-medium text-ink">{size}</dd>
         </div>
         <div>
-          <dt className="text-[10px] uppercase tracking-[0.16em] text-taupe">Cor</dt>
-          <dd className="mt-1">{color}</dd>
+          <dt className="text-[10px] uppercase tracking-[0.14em] text-taupe">Cor</dt>
+          <dd className="mt-0.5 font-medium text-ink">{color}</dd>
         </div>
         <div>
-          <dt className="text-[10px] uppercase tracking-[0.16em] text-taupe">Condição</dt>
-          <dd className="mt-1">{CONDITION_LABELS[condition]}</dd>
+          <dt className="text-[10px] uppercase tracking-[0.14em] text-taupe">Condição</dt>
+          <dd className="mt-0.5 font-medium text-ink">{CONDITION_LABELS[condition]}</dd>
         </div>
         <div>
-          <dt className="text-[10px] uppercase tracking-[0.16em] text-taupe">Estoque</dt>
-          <dd className="mt-1">
-            {available ? `${stock} unidade${stock > 1 ? "s" : ""}` : "Indisponível"}
+          <dt className="text-[10px] uppercase tracking-[0.14em] text-taupe">Estoque</dt>
+          <dd className="mt-0.5 font-medium text-ink">
+            {available ? `${stock} un.` : "Indisponível"}
           </dd>
         </div>
       </dl>
-      <p className="mt-8 text-sm leading-relaxed text-taupe">{description}</p>
-      {story ? <p className="mt-4 font-serif italic text-burgundy">{story}</p> : null}
+
+      {/* Desktop CTAs — no mobile a barra fixa cobre isso */}
+      <div className="mt-6 hidden space-y-3 lg:block">
+        <AddToCartButton sold={!available} item={cartItem} />
+        {available ? <BuyNowButton item={cartItem} /> : null}
+      </div>
+
+      <p className="mt-6 text-sm leading-relaxed text-taupe">{description}</p>
+      {story ? <p className="mt-3 font-serif italic text-burgundy">{story}</p> : null}
+
       {measurements && Object.values(measurements).some(Boolean) ? (
-        <div className="mt-8">
-          <p className="text-[11px] uppercase tracking-[0.2em] text-taupe">Medidas aproximadas</p>
-          <ul className="mt-3 grid grid-cols-2 gap-2 text-sm">
+        <div className="mt-6">
+          <p className="text-[11px] uppercase tracking-[0.16em] text-taupe">Medidas aproximadas</p>
+          <ul className="mt-2 grid grid-cols-2 gap-x-4 text-sm">
             {Object.entries(measurements).map(([key, value]) =>
               value ? (
                 <li key={key} className="flex justify-between border-b border-line py-2">
@@ -316,19 +410,10 @@ function ProductDetails({
           </ul>
         </div>
       ) : null}
-      <div className="mt-8 space-y-3">
-        <AddToCartButton sold={!available} item={cartItem} />
-        {available ? <BuyNowButton item={cartItem} /> : null}
-      </div>
-      <div className="mt-8">
+
+      <div className="mt-6">
         <ShippingEstimator />
       </div>
-      <Link
-        href="/produtos"
-        className="mt-8 inline-block text-xs font-bold uppercase tracking-[0.16em] text-taupe hover:text-ink"
-      >
-        ← Voltar à curadoria
-      </Link>
     </div>
   );
 }

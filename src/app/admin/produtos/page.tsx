@@ -119,9 +119,13 @@ export default async function AdminProductsPage({
                       </AdminMiniButton>
                     </form>
                     {product.status === "AVAILABLE" ? (
-                      <ConfirmAction action={markSoldAction} message="Marcar esta peça como vendida? Ela aparece vendida na loja.">
+                      <ConfirmAction
+                        action={markSoldAction}
+                        label="Vendida"
+                        tone="sold"
+                        message="Marcar esta peça como vendida? Ela aparece vendida na loja."
+                      >
                         <input type="hidden" name="id" value={product.id} />
-                        <AdminMiniButton tone="sold">Vendida</AdminMiniButton>
                       </ConfirmAction>
                     ) : null}
                     {product.status !== "ARCHIVED" ? (
@@ -143,10 +147,11 @@ export default async function AdminProductsPage({
                     ) : null}
                     <ConfirmAction
                       action={deleteProductAction}
+                      label="Excluir"
+                      tone="delete"
                       message="Excluir esta peça de vez? Se ela já entrou em um pedido, o sistema pede para arquivar."
                     >
                       <input type="hidden" name="id" value={product.id} />
-                      <AdminMiniButton tone="delete">Excluir</AdminMiniButton>
                     </ConfirmAction>
                   </div>
                 </article>

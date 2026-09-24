@@ -224,6 +224,7 @@ export type ShopPiece = {
   categorySlug: string;
   description: string;
   image: string;
+  gallery?: string[];
   alt: string;
 };
 
@@ -690,6 +691,11 @@ export const FEATURED_PIECES: ShopPiece[] = [
     categorySlug: "camisas",
     description: "Camisa branca clássica com botões discretos e caimento limpo.",
     image: "https://images.pexels.com/photos/297933/pexels-photo-297933.jpeg?auto=compress&cs=tinysrgb&w=800",
+    gallery: [
+      "https://images.pexels.com/photos/297933/pexels-photo-297933.jpeg?auto=compress&cs=tinysrgb&w=800",
+      "https://images.pexels.com/photos/7671168/pexels-photo-7671168.jpeg?auto=compress&cs=tinysrgb&w=800",
+      "https://images.pexels.com/photos/6311392/pexels-photo-6311392.jpeg?auto=compress&cs=tinysrgb&w=800",
+    ],
     alt: "Camisa branca em close.",
   },
   {

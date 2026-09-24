@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { signOut } from "@/auth";
 import { AdminNav } from "@/components/admin/AdminNav";
+import { AdminMobileHeader } from "@/components/admin/AdminMobileHeader";
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-ivory">
-      <aside className="fixed inset-y-0 left-0 hidden w-60 border-r border-line bg-burgundy py-6 text-ivory md:flex md:flex-col">
+      {/* z-50: fica acima de qualquer overlay do menu mobile */}
+      <aside className="fixed inset-y-0 left-0 z-50 hidden w-60 border-r border-line bg-burgundy py-6 text-ivory md:flex md:flex-col">
         <Link href="/" className="display px-6 text-2xl tracking-[0.16em]">
           VESTA
         </Link>
@@ -33,19 +35,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           </form>
         </div>
       </aside>
-      <div className="md:pl-60">
-        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-6 py-4 md:hidden">
-          <span className="display text-xl">VESTA</span>
-          <Link
-            href="/"
-            className="border border-gold px-3 py-2 text-[10px] font-bold uppercase tracking-[0.14em] text-burgundy transition hover:bg-gold"
-          >
-            Loja
-          </Link>
-          <div className="w-full">
-            <AdminNav variant="mobile" />
-          </div>
-        </header>
+      <div className="relative md:pl-60">
+        <AdminMobileHeader />
         <div className="p-6 md:p-10">{children}</div>
       </div>
     </div>

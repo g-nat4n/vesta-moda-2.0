@@ -138,8 +138,21 @@ export async function getRelatedProducts(product: {
     })
     .filter((entry) => entry.score > 0)
     .sort((a, b) => b.score - a.score)
-    .slice(0, 4)
+    .slice(0, 12)
     .map((entry) => entry.item);
+}
+
+export async function getSuggestedProducts(excludeIds: string[], limit = 12) {
+  return prisma.product.findMany({
+    where: {
+      id: { notIn: excludeIds },
+      status: ProductStatus.AVAILABLE,
+      stock: { gt: 0 },
+    },
+    include: catalogInclude,
+    orderBy: { updatedAt: "desc" },
+    take: limit,
+  });
 }
 
 export async function getCatalogFacets() {

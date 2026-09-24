@@ -99,12 +99,6 @@ export async function createPaymentPreference(orderId: string) {
 
   const sandbox = isMercadoPagoSandbox();
   const back = buildBackUrls(order.id);
-  // No sandbox do Checkout Pro o e-mail do pagador precisa ser @testuser.com
-  const payerEmail = sandbox
-    ? order.email.toLowerCase().endsWith("@testuser.com")
-      ? order.email.toLowerCase()
-      : `buyer+${order.id.slice(-8)}@testuser.com`
-    : order.email;
 
   const preference = new Preference(client);
   const created = await preference.create({
@@ -121,10 +115,16 @@ export async function createPaymentPreference(orderId: string) {
       ],
       payer: {
         name: order.customerName,
-        email: payerEmail,
-        identification: order.cpf
-          ? { type: "CPF", number: order.cpf.replace(/\D/g, "") }
-          : undefined,
+        email: order.email,
+        // CPF real em preferência de conta teste costuma quebrar o Checkout Pro.
+        ...(sandbox || !order.cpf
+          ? {}
+          : {
+              identification: {
+                type: "CPF" as const,
+                number: order.cpf.replace(/\D/g, ""),
+              },
+            }),
       },
       back_urls: {
         success: back.success,
@@ -143,8 +143,8 @@ export async function createPaymentPreference(orderId: string) {
     data: { preferenceId: created.id },
   });
 
-  // Mercado Pago está descontinuando sandbox_init_point: use sempre init_point.
-  // O modo teste vem das credenciais de teste + cartão APRO / conta compradora de teste.
+  // Com conta TESTUSER, use init_point (www). O sandbox_init_point costuma
+  // abrir "Ops, ocorreu um erro". O modo teste vem das credenciais + comprador de teste.
   return {
     checkoutUrl: created.init_point ?? created.sandbox_init_point ?? `/pedido/${order.id}`,
     preferenceId: created.id ?? null,

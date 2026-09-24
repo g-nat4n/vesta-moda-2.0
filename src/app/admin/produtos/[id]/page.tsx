@@ -61,18 +61,26 @@ export default async function EditProductPage({ params }: { params: Params }) {
       <h1 className="display mt-2 text-4xl">Editar peça</h1>
       <div className="mt-4 flex flex-wrap gap-2">
         {product.status === "AVAILABLE" ? (
-          <ConfirmAction action={markSoldAction} message="Marcar esta peça como vendida?">
+          <ConfirmAction
+            action={markSoldAction}
+            label="Marcar vendida"
+            tone="sold"
+            message="Marcar esta peça como vendida?"
+          >
             <input type="hidden" name="id" value={product.id} />
-            <AdminMiniButton tone="sold">Marcar vendida</AdminMiniButton>
           </ConfirmAction>
         ) : null}
         <form action={archiveProductAction}>
           <input type="hidden" name="id" value={product.id} />
           <AdminMiniButton tone="archive">Arquivar</AdminMiniButton>
         </form>
-        <ConfirmAction action={deleteProductAction} message="Excluir esta peça de vez?">
+        <ConfirmAction
+          action={deleteProductAction}
+          label="Excluir"
+          tone="delete"
+          message="Excluir esta peça de vez?"
+        >
           <input type="hidden" name="id" value={product.id} />
-          <AdminMiniButton tone="delete">Excluir</AdminMiniButton>
         </ConfirmAction>
       </div>
       <ProductForm product={product} categories={categories} looks={looks} />

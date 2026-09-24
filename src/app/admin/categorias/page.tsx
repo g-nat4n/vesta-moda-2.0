@@ -45,33 +45,36 @@ export default async function AdminCategoriesPage({
       ) : null}
       <ul className="mt-10 grid max-w-3xl gap-4">
         {categories.map((category) => (
-          <li key={category.id} className="flex flex-wrap items-center justify-between gap-4 border border-line bg-white p-5">
-            <div>
-              <p className="font-serif text-2xl">{category.name}</p>
-              <p className="mt-1 text-xs uppercase tracking-[0.14em] text-taupe">
-                {category.active ? "Ativa na loja" : "Desativada"} · {category._count.products}{" "}
-                {category._count.products === 1 ? "peça" : "peças"}
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <form action={toggleCategoryAction}>
-                <input type="hidden" name="id" value={category.id} />
-                <input type="hidden" name="active" value={category.active ? "false" : "true"} />
-                <AdminMiniButton tone={category.active ? "archive" : "restore"}>
-                  {category.active ? "Desativar" : "Ativar"}
-                </AdminMiniButton>
-              </form>
-              <ConfirmAction
-                action={deleteCategoryAction}
-                message={
-                  category._count.products > 0
-                    ? "Esta categoria ainda tem peças. O sistema não exclui para não quebrar o acervo."
-                    : "Excluir esta categoria?"
-                }
-              >
-                <input type="hidden" name="id" value={category.id} />
-                <AdminMiniButton tone="delete">Excluir</AdminMiniButton>
-              </ConfirmAction>
+          <li key={category.id} className="border border-line bg-white p-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="font-serif text-2xl">{category.name}</p>
+                <p className="mt-1 text-xs uppercase tracking-[0.14em] text-taupe">
+                  {category.active ? "Ativa na loja" : "Desativada"} · {category._count.products}{" "}
+                  {category._count.products === 1 ? "peça" : "peças"}
+                </p>
+              </div>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <form action={toggleCategoryAction}>
+                  <input type="hidden" name="id" value={category.id} />
+                  <input type="hidden" name="active" value={category.active ? "false" : "true"} />
+                  <AdminMiniButton tone={category.active ? "archive" : "restore"}>
+                    {category.active ? "Desativar" : "Ativar"}
+                  </AdminMiniButton>
+                </form>
+                <ConfirmAction
+                  action={deleteCategoryAction}
+                  label="Excluir"
+                  tone="delete"
+                  message={
+                    category._count.products > 0
+                      ? "Esta categoria ainda tem peças. O sistema não exclui para não quebrar o acervo."
+                      : "Excluir esta categoria?"
+                  }
+                >
+                  <input type="hidden" name="id" value={category.id} />
+                </ConfirmAction>
+              </div>
             </div>
           </li>
         ))}

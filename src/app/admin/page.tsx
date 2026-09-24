@@ -51,13 +51,13 @@ export default async function AdminHome() {
       <p className="eyebrow">Painel</p>
       <h1 className="display mt-2 text-4xl">Atelier Vesta</h1>
       <p className="mt-2 max-w-xl text-sm text-taupe">
-        Cadastre peças, organize a vitrine da home, categorias e acompanhe pedidos.
+        Cadastre peças, organize os Best Sellers da home, categorias e acompanhe pedidos.
       </p>
       {dbDown ? <DbUnavailableBanner /> : null}
       <div className="mt-8 flex flex-wrap gap-3">
         {[
           { href: "/admin/produtos/novo", label: "Nova peça" },
-          { href: "/admin/vitrine", label: "Vitrine / Home" },
+          { href: "/admin/best-sellers", label: "Best Sellers" },
           { href: "/admin/categorias", label: "Categorias" },
           { href: "/admin/pedidos", label: "Pedidos" },
         ].map((link) => (

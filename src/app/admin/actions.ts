@@ -68,6 +68,7 @@ export async function saveProductAction(_prev: { error?: string } | null, formDa
     }
     revalidatePath("/admin/produtos");
     revalidatePath(`/admin/produtos/${product.id}`);
+    revalidatePath("/admin/best-sellers");
     revalidatePath("/admin/vitrine");
     revalidatePath("/produtos");
     revalidatePath("/");
@@ -132,6 +133,7 @@ export async function toggleFeaturedAction(formData: FormData) {
   const id = String(formData.get("id"));
   const featured = formData.get("featured") === "true";
   await setProductFeatured(id, featured);
+  revalidatePath("/admin/best-sellers");
   revalidatePath("/admin/vitrine");
   revalidatePath("/admin/produtos");
   revalidatePath("/");
