@@ -105,10 +105,10 @@ export default async function OrderPage({
               <span className="font-semibold">{order.number}</span> ficou sem confirmação.
             </p>
             <p className="mt-1 text-sm text-taupe">
-              Você pode tentar de novo pelo checkout ou escolher outra peça.
+              Você pode tentar de novo com outro cartão ou escolher outra peça.
             </p>
             <div className="mt-5 flex flex-wrap gap-3">
-              <Button href="/checkout" variant="burgundy">
+              <Button href={`/pedido/${order.id}/pagar`} variant="burgundy">
                 Tentar novamente
               </Button>
               <Button href="/produtos" variant="ghost">
@@ -130,6 +130,13 @@ export default async function OrderPage({
                 ? " (Mercado Pago ainda não configurado neste ambiente)."
                 : "."}
             </p>
+            {result !== "pending-payment" ? (
+              <div className="mt-5">
+                <Button href={`/pedido/${order.id}/pagar`} variant="burgundy">
+                  Pagar com cartão
+                </Button>
+              </div>
+            ) : null}
           </div>
         ) : null}
 

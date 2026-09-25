@@ -2,7 +2,7 @@ import { MercadoPagoConfig, Preference, Payment } from "mercadopago";
 import { prisma } from "@/lib/prisma";
 import { getSiteUrl } from "@/lib/site-url";
 import { markOrderPaid, restoreOrderStock } from "@/services/order.service";
-import { PaymentStatus } from "@prisma/client";
+import { PaymentStatus, OrderStatus } from "@prisma/client";
 
 function getClient() {
   const token = process.env.MERCADOPAGO_ACCESS_TOKEN?.trim();
@@ -29,7 +29,7 @@ function publicReturnOrigin() {
   if (configured && isPublicHttps(configured)) return configured.replace(/\/$/, "");
   const appUrl = appBaseUrl();
   if (isPublicHttps(appUrl)) return appUrl.replace(/\/$/, "");
-  return "https://vesta-moda.vercel.app";
+  return "https://vesta-moda-2-0.vercel.app";
 }
 
 function buildBackUrls(orderId: string) {
@@ -69,9 +69,23 @@ export function mercadoPagoErrorMessage(error: unknown) {
   if (error && typeof error === "object") {
     const err = error as {
       message?: string;
-      cause?: Array<{ description?: string; message?: string }>;
+      cause?: Array<{ description?: string; message?: string; code?: string | number }>;
     };
     const cause = err.cause?.[0]?.description ?? err.cause?.[0]?.message;
+    const raw = cause || err.message || "";
+    const lower = raw.toLowerCase();
+
+    if (
+      lower.includes("unauthorized use of live credentials") ||
+      lower.includes("uma das partes é de teste") ||
+      lower.includes("uma das partes e de teste")
+    ) {
+      return (
+        "A conta de teste do Mercado Pago não tem permissão para cobrar cartão pela API " +
+        "(Checkout Transparente). Em localhost use MERCADOPAGO_LOCAL_MOCK=true, " +
+        "ou em produção use as Credenciais de produção da conta real da loja."
+      );
+    }
     if (cause) return cause;
     if (err.message) return err.message;
   }
@@ -99,6 +113,33 @@ export async function createPaymentPreference(orderId: string) {
   }
 
   const sandbox = isMercadoPagoSandbox();
+  const appUrl = appBaseUrl();
+  const localMock =
+    sandbox &&
+    process.env.MERCADOPAGO_LOCAL_MOCK === "true" &&
+    (appUrl.includes("localhost") || appUrl.includes("127.0.0.1"));
+
+  // Local + mock: marca como pago sem abrir o Checkout Pro.
+  if (localMock) {
+    return {
+      checkoutUrl: `/api/payments/local-approve?orderId=${order.id}`,
+      preferenceId: null as string | null,
+    };
+  }
+
+  // Checkout Transparente (cartão na própria loja, sem login no MP).
+  // Preferido: funciona com credenciais de teste sem conta compradora.
+  const useTransparent =
+    process.env.MERCADOPAGO_CHECKOUT !== "pro" &&
+    Boolean(process.env.NEXT_PUBLIC_MERCADOPAGO_PUBLIC_KEY?.trim() || process.env.MERCADOPAGO_PUBLIC_KEY?.trim());
+
+  if (useTransparent) {
+    return {
+      checkoutUrl: `/pedido/${order.id}/pagar`,
+      preferenceId: null as string | null,
+    };
+  }
+
   const back = buildBackUrls(order.id);
 
   const preference = new Preference(client);
@@ -172,6 +213,105 @@ export async function handleMercadoPagoNotification(paymentId: string) {
       status === "refunded" ? PaymentStatus.REFUNDED : PaymentStatus.REJECTED,
     );
   }
+}
+
+/** Cria pagamento com cartão (Checkout Transparente / Card Payment Brick). */
+export async function createCardPayment(input: {
+  orderId: string;
+  token: string;
+  paymentMethodId: string;
+  installments: number;
+  issuerId?: string | number | null;
+  payerEmail?: string | null;
+  payerIdentification?: { type?: string | null; number?: string | null } | null;
+}) {
+  const client = getClient();
+  if (!client) throw new Error("Mercado Pago não configurado.");
+
+  const order = await prisma.order.findUnique({
+    where: { id: input.orderId },
+    include: { payment: true },
+  });
+  if (!order) throw new Error("Pedido não encontrado.");
+  if (order.status === OrderStatus.CANCELLED) {
+    throw new Error("Este pedido foi cancelado. Faça um novo checkout.");
+  }
+  if (order.payment?.status === PaymentStatus.APPROVED) {
+    return {
+      status: "approved",
+      statusDetail: "already_approved",
+      paymentId: order.payment.providerPaymentId,
+    };
+  }
+
+  const sandbox = isMercadoPagoSandbox();
+  const email = (input.payerEmail || order.email).trim();
+  const docFromBrick = input.payerIdentification?.number?.replace(/\D/g, "") || "";
+  const docFromOrder = order.cpf?.replace(/\D/g, "") || "";
+  // Em sandbox o MP exige CPF de teste 12345678909 para aprovar com nome APRO.
+  const docNumber = sandbox
+    ? docFromBrick || "12345678909"
+    : docFromBrick || docFromOrder;
+  const docType = (input.payerIdentification?.type || "CPF").toUpperCase();
+
+  const issuerRaw = input.issuerId;
+  const issuerId =
+    issuerRaw !== undefined && issuerRaw !== null && String(issuerRaw).trim() !== ""
+      ? Number(issuerRaw)
+      : null;
+
+  const amount = Math.max(order.totalCents / 100, 1);
+  const paymentApi = new Payment(client);
+  const created = await paymentApi.create({
+    body: {
+      transaction_amount: amount,
+      token: input.token,
+      description: `Pedido ${order.number}`,
+      installments: Number(input.installments) || 1,
+      payment_method_id: input.paymentMethodId,
+      ...(issuerId && Number.isFinite(issuerId) ? { issuer_id: issuerId } : {}),
+      external_reference: order.id,
+      statement_descriptor: "VESTAMODA",
+      payer: {
+        email,
+        ...(docNumber
+          ? {
+              identification: {
+                type: docType,
+                number: docNumber,
+              },
+            }
+          : {}),
+      },
+    },
+    requestOptions: {
+      idempotencyKey: `${order.id}-${input.token.slice(0, 24)}`,
+    },
+  });
+
+  const status = String(created.status ?? "");
+  if (status === "approved") {
+    await markOrderPaid(order.id, String(created.id), created);
+  } else {
+    // Mantém o pedido aberto para nova tentativa no Brick (não cancela estoque).
+    await prisma.payment.update({
+      where: { orderId: order.id },
+      data: {
+        status:
+          status === "rejected" || status === "cancelled"
+            ? PaymentStatus.REJECTED
+            : PaymentStatus.PENDING,
+        providerPaymentId: created.id ? String(created.id) : undefined,
+        rawPayload: created as object,
+      },
+    });
+  }
+
+  return {
+    status,
+    statusDetail: created.status_detail,
+    paymentId: created.id ? String(created.id) : null,
+  };
 }
 
 /** Sincroniza o pedido na volta do Checkout Pro (funciona sem webhook, inclusive no localhost). */

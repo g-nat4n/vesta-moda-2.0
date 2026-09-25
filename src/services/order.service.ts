@@ -4,6 +4,7 @@ import { generateOrderNumber } from "@/lib/utils";
 import type { CheckoutInput } from "@/lib/validations";
 import { quoteShipping } from "@/services/shipping.service";
 import { applyCoupon } from "@/services/coupon.service";
+import { sendOrderPaidEmail } from "@/lib/mail";
 
 type CartSnapshot = {
   productId: string;
@@ -130,39 +131,72 @@ export async function createOrder(input: CheckoutInput, cart: CartSnapshot[], us
 }
 
 export async function markOrderPaid(orderId: string, providerPaymentId?: string, rawPayload?: unknown) {
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const order = await tx.order.findUnique({
       where: { id: orderId },
       include: { items: true, payment: true },
     });
     if (!order) throw new Error("Pedido não encontrado.");
 
-    await tx.order.update({
-      where: { id: orderId },
-      data: { status: OrderStatus.PAID },
-    });
+    const alreadyPaid = order.payment?.status === PaymentStatus.APPROVED;
 
-    await tx.payment.update({
-      where: { orderId },
-      data: {
-        status: PaymentStatus.APPROVED,
-        providerPaymentId,
-        rawPayload: rawPayload as object | undefined,
-      },
-    });
+    if (!alreadyPaid) {
+      await tx.order.update({
+        where: { id: orderId },
+        data: { status: OrderStatus.PAID },
+      });
 
-    for (const item of order.items) {
-      await tx.product.update({
-        where: { id: item.productId },
+      await tx.payment.update({
+        where: { orderId },
         data: {
-          status: ProductStatus.SOLD,
-          stock: 0,
+          status: PaymentStatus.APPROVED,
+          providerPaymentId,
+          rawPayload: rawPayload as object | undefined,
         },
       });
+
+      for (const item of order.items) {
+        await tx.product.update({
+          where: { id: item.productId },
+          data: {
+            status: ProductStatus.SOLD,
+            stock: 0,
+          },
+        });
+      }
     }
 
-    return order;
+    return { order, alreadyPaid };
   });
+
+  if (!result.alreadyPaid) {
+    try {
+      await sendOrderPaidEmail({
+        email: result.order.email,
+        customerName: result.order.customerName,
+        number: result.order.number,
+        id: result.order.id,
+        totalCents: result.order.totalCents,
+        shippingLabel: result.order.shippingLabel,
+        items: result.order.items.map((item) => ({
+          name: item.name,
+          brand: item.brand,
+          slug: item.slug,
+          size: item.size,
+          priceCents: item.priceCents,
+          quantity: item.quantity,
+          imageUrl: item.imageUrl,
+        })),
+      });
+    } catch (error) {
+      console.error(
+        "[vesta] falha ao enviar e-mail de compra:",
+        error instanceof Error ? error.message : error,
+      );
+    }
+  }
+
+  return result.order;
 }
 
 export async function restoreOrderStock(orderId: string, paymentStatus: PaymentStatus) {
