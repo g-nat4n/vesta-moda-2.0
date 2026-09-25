@@ -6,6 +6,21 @@ import { assertLoginAllowed, LoginLockedError, recordLoginAttempt } from "@/lib/
 import { createResetToken } from "@/lib/auth/reset-token";
 import { isMailConfigured, sendMail } from "@/lib/mail";
 
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function okResponse() {
+  return NextResponse.json({
+    ok: true,
+    message: "Se este e-mail estiver cadastrado, enviamos o link de redefinição.",
+  });
+}
+
 export async function POST(request: Request) {
   let body: unknown;
   try {
@@ -46,9 +61,16 @@ export async function POST(request: Request) {
     select: { id: true, name: true, email: true },
   });
 
+  // Sempre a mesma resposta 200 — evita enumerar e-mails e estado do SMTP.
   if (!user) {
     await recordLoginAttempt(email, ip, false);
-    return NextResponse.json({ message: "Este e-mail não possui cadastro." }, { status: 404 });
+    return okResponse();
+  }
+
+  if (!isMailConfigured()) {
+    console.error("[vesta] forgot-password: SMTP não configurado.");
+    await recordLoginAttempt(email, ip, false);
+    return okResponse();
   }
 
   const { token, hash } = createResetToken();
@@ -63,37 +85,25 @@ export async function POST(request: Request) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? process.env.AUTH_URL ?? "http://localhost:3000";
   const resetUrl = `${appUrl}/redefinir-senha?token=${token}`;
 
-  if (!isMailConfigured()) {
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { passwordResetHash: null, passwordResetExpires: null },
-    });
-    return NextResponse.json(
-      {
-        message:
-          "O envio de e-mail ainda não está configurado. Preencha SMTP_USER e SMTP_PASS no .env (Gmail: senha de app).",
-      },
-      { status: 503 },
-    );
-  }
-
   try {
     await sendMail(
       user.email,
       "Redefinir senha · Vesta Moda",
-      `<p>Olá, ${user.name}.</p>
+      `<p>Olá, ${escapeHtml(user.name)}.</p>
        <p>Recebemos um pedido para redefinir sua senha na Vesta Moda.</p>
-       <p><a href="${resetUrl}">Clique aqui para criar uma nova senha</a>. Este link vale por 30 minutos.</p>
+       <p><a href="${escapeHtml(resetUrl)}">Clique aqui para criar uma nova senha</a>. Este link vale por 30 minutos.</p>
        <p>Se você não pediu isso, ignore este e-mail.</p>`,
     );
   } catch (error) {
     console.error("[vesta] falha ao enviar e-mail:", error instanceof Error ? error.message : error);
-    return NextResponse.json(
-      { message: "Não foi possível enviar o e-mail agora. Confira o SMTP no .env e o spam." },
-      { status: 500 },
-    );
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordResetHash: null, passwordResetExpires: null },
+    });
+    await recordLoginAttempt(email, ip, false);
+    return okResponse();
   }
 
   await prisma.loginAttempt.create({ data: { email, ip, success: true } });
-  return NextResponse.json({ ok: true });
+  return okResponse();
 }

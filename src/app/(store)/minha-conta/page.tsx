@@ -42,7 +42,10 @@ export default async function AccountPage() {
         <p className="mt-2 text-sm text-taupe">Peças que você ainda não finalizou.</p>
         <AccountBagCards />
 
-        <h2 className="display mt-14 text-2xl">Pedidos feitos</h2>
+        <h2 className="display mt-14 text-2xl">Meus pedidos</h2>
+        <p className="mt-2 text-sm text-taupe">
+          Acompanhe pedidos em andamento, finalizados e cancelados.
+        </p>
         {ordersUnavailable ? (
           <p className="mt-4 text-sm text-taupe">
             Não foi possível carregar os pedidos agora. Tente de novo em instantes.

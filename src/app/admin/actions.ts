@@ -15,6 +15,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import { upsertCategory, deleteCategory, toggleCategory } from "@/services/category.service";
 import { updateOrderStatus } from "@/services/order.service";
+import { refundOrderPayment, mercadoPagoErrorMessage } from "@/services/payment.service";
 import { storeProductPhoto } from "@/lib/cloudinary";
 
 async function requireAdmin() {
@@ -191,6 +192,24 @@ export async function updateOrderStatusAction(formData: FormData) {
   await updateOrderStatus(String(formData.get("id")), String(formData.get("status")) as OrderStatus);
   revalidatePath("/admin/pedidos");
   revalidatePath(`/admin/pedidos/${String(formData.get("id"))}`);
+}
+
+export async function refundOrderAction(formData: FormData) {
+  await requireAdmin();
+  const id = String(formData.get("id") || "");
+  if (!id) return { error: "Pedido inválido." };
+
+  try {
+    await refundOrderPayment(id);
+  } catch (error) {
+    return { error: mercadoPagoErrorMessage(error) };
+  }
+
+  revalidatePath("/admin/pedidos");
+  revalidatePath(`/admin/pedidos/${id}`);
+  revalidatePath(`/pedido/${id}`);
+  revalidatePath("/produtos");
+  return { ok: true as const };
 }
 
 export async function addImageByUrlAction(formData: FormData) {

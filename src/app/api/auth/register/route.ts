@@ -2,8 +2,19 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth/password";
 import { registerSchema } from "@/lib/validations";
+import { clientIp } from "@/lib/auth/ip";
+import { assertRateLimit, RateLimitError } from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
+  try {
+    await assertRateLimit({ key: "register", ip: clientIp(request), max: 5 });
+  } catch (error) {
+    if (error instanceof RateLimitError) {
+      return NextResponse.json({ message: error.message }, { status: 429 });
+    }
+    throw error;
+  }
+
   let body: unknown;
   try {
     body = await request.json();
@@ -21,7 +32,11 @@ export async function POST(request: Request) {
     select: { id: true },
   });
   if (exists) {
-    return NextResponse.json({ message: "Este e-mail já possui cadastro." }, { status: 400 });
+    // Mesma mensagem genérica para não facilitar enumeração agressiva.
+    return NextResponse.json(
+      { message: "Não foi possível criar a conta com estes dados." },
+      { status: 400 },
+    );
   }
 
   await prisma.user.create({

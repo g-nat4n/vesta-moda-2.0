@@ -5,6 +5,7 @@ import { AdminBackLink } from "@/components/admin/AdminBackLink";
 import { DbUnavailableBanner } from "@/components/admin/DbUnavailableBanner";
 import { getOrderById } from "@/services/order.service";
 import { OrderStatusForm } from "@/components/admin/OrderStatusForm";
+import { RefundOrderButton } from "@/components/admin/RefundOrderButton";
 import { ORDER_STATUS_LABELS, PAYMENT_STATUS_LABELS } from "@/lib/constants";
 import { formatBRL } from "@/lib/format";
 
@@ -44,6 +45,14 @@ export default async function AdminOrderDetailPage({ params }: { params: Params 
         {order.payment ? PAYMENT_STATUS_LABELS[order.payment.status] : "—"}
       </p>
       <OrderStatusForm id={order.id} status={order.status} />
+      {order.payment?.status === "APPROVED" ? (
+        <RefundOrderButton orderId={order.id} orderNumber={order.number} />
+      ) : null}
+      {order.payment?.status === "REFUNDED" ? (
+        <p className="mt-6 max-w-md border border-line bg-cream/60 px-4 py-3 text-sm text-taupe">
+          Este pedido já foi reembolsado. As peças voltaram ao estoque.
+        </p>
+      ) : null}
       <div className="mt-8 grid gap-8 md:grid-cols-2">
         <div className="border border-line bg-white p-6">
           <h2 className="display text-2xl">Cliente</h2>

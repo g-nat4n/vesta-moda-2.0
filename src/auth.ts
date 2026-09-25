@@ -51,15 +51,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           },
         });
 
+        // Mesma falha para e-mail inexistente ou senha errada (anti-enumeração).
         if (!user?.passwordHash) {
           await recordLoginAttempt(email, ip, false);
-          throw new AuthLoginError("email");
+          throw new AuthLoginError("invalid");
         }
 
         const valid = await verifyPassword(parsed.data.password, user.passwordHash);
         if (!valid) {
           await recordLoginAttempt(email, ip, false);
-          throw new AuthLoginError("password");
+          throw new AuthLoginError("invalid");
         }
 
         await recordLoginAttempt(email, ip, true);

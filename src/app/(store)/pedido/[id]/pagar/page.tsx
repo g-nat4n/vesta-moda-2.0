@@ -5,6 +5,8 @@ import { CardPaymentBrick } from "@/components/checkout/CardPaymentBrick";
 import { getOrderById } from "@/services/order.service";
 import { formatBRL } from "@/lib/format";
 import { createMetadata } from "@/lib/seo";
+import { auth } from "@/auth";
+import { canAccessOrder, readOrderAccessToken } from "@/lib/order-access";
 
 type Params = Promise<{ id: string }>;
 
@@ -14,13 +16,24 @@ export const metadata = createMetadata({
   noIndex: true,
 });
 
-export default async function PayOrderPage({ params }: { params: Params }) {
+export default async function PayOrderPage({
+  params,
+  searchParams,
+}: {
+  params: Params;
+  searchParams: Promise<{ access?: string }>;
+}) {
   const { id } = await params;
+  const query = await searchParams;
+  const session = await auth();
+  const accessToken = await readOrderAccessToken(id, query.access);
   const order = await getOrderById(id);
   if (!order) notFound();
+  if (!canAccessOrder(order, session, accessToken)) notFound();
 
   if (order.payment?.status === "APPROVED") {
-    redirect(`/pedido/${order.id}?result=success`);
+    const q = accessToken ? `?result=success&access=${encodeURIComponent(accessToken)}` : "?result=success";
+    redirect(`/pedido/${order.id}${q}`);
   }
 
   const publicKey =
@@ -29,6 +42,9 @@ export default async function PayOrderPage({ params }: { params: Params }) {
     "";
 
   const amount = Math.max(order.totalCents / 100, 1);
+  const detailsHref = accessToken
+    ? `/pedido/${order.id}?access=${encodeURIComponent(accessToken)}`
+    : `/pedido/${order.id}`;
 
   return (
     <StoreShell>
@@ -61,11 +77,15 @@ export default async function PayOrderPage({ params }: { params: Params }) {
             amount={amount}
             email={order.email}
             publicKey={publicKey}
+            accessToken={accessToken}
           />
         </div>
 
         <p className="mt-8 text-sm text-taupe">
-          <Link href={`/pedido/${order.id}`} className="text-burgundy underline-offset-2 hover:underline">
+          <Link
+            href={detailsHref}
+            className="text-burgundy underline-offset-2 hover:underline"
+          >
             Ver detalhes do pedido
           </Link>
         </p>

@@ -1,6 +1,7 @@
 import nodemailer from "nodemailer";
 import { formatBRL } from "@/lib/format";
 import { getSiteUrl } from "@/lib/site-url";
+import { createOrderAccessToken, ORDER_ACCESS_TTL_EMAIL } from "@/lib/order-access";
 
 function smtpUser() {
   return process.env.SMTP_USER?.trim() || "";
@@ -93,7 +94,9 @@ export async function sendOrderPaidEmail(order: OrderPaidMail) {
   }
 
   const site = getSiteUrl().replace(/\/$/, "");
-  const orderUrl = `${site}/pedido/${order.id}`;
+  const access = createOrderAccessToken(order.id, ORDER_ACCESS_TTL_EMAIL);
+  // claim troca o token da query por cookie HttpOnly (menos vazamento via Referer).
+  const orderUrl = `${site}/api/orders/${order.id}/claim?access=${encodeURIComponent(access)}`;
   const accountUrl = `${site}/minha-conta`;
   const shopUrl = `${site}/produtos`;
   const homeUrl = site;
@@ -217,4 +220,86 @@ export async function sendOrderPaidEmail(order: OrderPaidMail) {
 
   await sendMail(order.email, `Compra confirmada · Pedido ${order.number}`, html);
   return true;
+}
+
+/** Aviso de cancelamento da compra (com ou sem estorno). */
+export async function sendOrderCancelledEmail(order: {
+  email: string;
+  customerName: string;
+  number: string;
+  id: string;
+  totalCents: number;
+  refunded?: boolean;
+}) {
+  if (!isMailConfigured()) {
+    console.warn("[vesta] e-mail de cancelamento não enviado: SMTP não configurado.");
+    return false;
+  }
+
+  const site = getSiteUrl().replace(/\/$/, "");
+  const access = createOrderAccessToken(order.id, ORDER_ACCESS_TTL_EMAIL);
+  const orderUrl = `${site}/api/orders/${order.id}/claim?access=${encodeURIComponent(access)}`;
+  const shopUrl = `${site}/produtos`;
+  const refunded = Boolean(order.refunded);
+
+  await sendMail(
+    order.email,
+    `Pedido cancelado · ${order.number}`,
+    `<!DOCTYPE html>
+<html lang="pt-BR">
+<body style="margin:0;padding:0;background:#f7f3ee;font-family:Georgia,'Times New Roman',serif;color:#1a1a1a">
+  <table role="presentation" width="100%" style="background:#f7f3ee;padding:24px 12px">
+    <tr><td align="center">
+      <table role="presentation" width="100%" style="max-width:560px;background:#ffffff;border:1px solid #e8e2d8">
+        <tr>
+          <td style="padding:28px;text-align:center;border-bottom:1px solid #e8e2d8">
+            <a href="${site}" style="text-decoration:none;color:#1a1a1a;letter-spacing:0.28em;font-size:18px;font-weight:700">VESTA</a>
+            <div style="margin-top:8px;font-size:12px;color:#7a7268;letter-spacing:0.08em">PEDIDO CANCELADO</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:28px;font-size:14px;line-height:1.6">
+            <p style="margin:0 0 12px">Olá, ${escapeHtml(order.customerName)}.</p>
+            <p style="margin:0 0 12px;color:#4a453f">
+              Confirmamos o cancelamento do pedido <strong>${escapeHtml(order.number)}</strong>.
+            </p>
+            ${
+              refunded
+                ? `<p style="margin:0 0 12px;color:#4a453f">
+                    O valor de <strong>${formatBRL(order.totalCents)}</strong> será estornado
+                    conforme o prazo do seu cartão ou meio de pagamento.
+                  </p>`
+                : `<p style="margin:0 0 12px;color:#4a453f">
+                    Como o pagamento não havia sido concluído, nenhuma cobrança permanece ativa.
+                  </p>`
+            }
+            <p style="margin:0 0 12px;color:#4a453f">
+              Se quiser, explore de novo a curadoria quando fizer sentido.
+            </p>
+            <p style="margin:22px 0 0;text-align:center">
+              <a href="${orderUrl}" style="display:inline-block;background:#6b2c3e;color:#fff;text-decoration:none;padding:12px 22px;font-size:13px">Ver pedido</a>
+            </p>
+            <p style="margin:14px 0 0;text-align:center">
+              <a href="${shopUrl}" style="color:#6b2c3e;font-size:13px">Voltar à curadoria</a>
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`,
+  );
+  return true;
+}
+
+/** @deprecated use sendOrderCancelledEmail */
+export async function sendOrderRefundedEmail(order: {
+  email: string;
+  customerName: string;
+  number: string;
+  id: string;
+  totalCents: number;
+}) {
+  return sendOrderCancelledEmail({ ...order, refunded: true });
 }

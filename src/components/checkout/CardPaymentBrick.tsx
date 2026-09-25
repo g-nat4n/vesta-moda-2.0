@@ -9,6 +9,7 @@ type Props = {
   amount: number;
   email: string;
   publicKey: string;
+  accessToken?: string | null;
 };
 
 type BrickFormData = {
@@ -22,7 +23,7 @@ type BrickFormData = {
   };
 };
 
-export function CardPaymentBrick({ orderId, amount, email, publicKey }: Props) {
+export function CardPaymentBrick({ orderId, amount, email, publicKey, accessToken }: Props) {
   const router = useRouter();
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,6 +52,7 @@ export function CardPaymentBrick({ orderId, amount, email, publicKey }: Props) {
           issuerId: formData.issuer_id || null,
           payerEmail: formData.payer?.email || email,
           payerIdentification: formData.payer?.identification ?? null,
+          access: accessToken || undefined,
         }),
       });
       const data = (await res.json()) as {
@@ -66,7 +68,10 @@ export function CardPaymentBrick({ orderId, amount, email, publicKey }: Props) {
       }
 
       if (data.status === "approved") {
-        router.push(`/pedido/${orderId}?result=success`);
+        const q = accessToken
+          ? `?result=success&access=${encodeURIComponent(accessToken)}`
+          : "?result=success";
+        router.push(`/pedido/${orderId}${q}`);
         return;
       }
       if (data.status === "rejected" || data.status === "cancelled") {
@@ -77,7 +82,10 @@ export function CardPaymentBrick({ orderId, amount, email, publicKey }: Props) {
         setSubmitting(false);
         return;
       }
-      router.push(`/pedido/${orderId}?result=pending`);
+      const pendingQ = accessToken
+        ? `?result=pending&access=${encodeURIComponent(accessToken)}`
+        : "?result=pending";
+      router.push(`/pedido/${orderId}${pendingQ}`);
     } catch {
       setError("Falha de rede ao processar o pagamento.");
       setSubmitting(false);

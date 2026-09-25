@@ -12,9 +12,18 @@ export function isCloudinaryConfigured() {
   return configured();
 }
 
+const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const MAX_BYTES = 8 * 1024 * 1024;
+
 export async function uploadImage(file: File) {
   if (!configured()) {
     throw new Error("Cloudinary não configurado.");
+  }
+  if (!ALLOWED_TYPES.has(file.type)) {
+    throw new Error("Use JPG, PNG, WEBP ou GIF.");
+  }
+  if (file.size > MAX_BYTES) {
+    throw new Error("Cada imagem pode ter no máximo 8 MB.");
   }
 
   cloudinary.config({

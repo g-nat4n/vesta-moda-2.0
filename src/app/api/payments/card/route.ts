@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { auth } from "@/auth";
 import {
   createCardPayment,
   mercadoPagoErrorMessage,
 } from "@/services/payment.service";
+import { getOrderById } from "@/services/order.service";
+import { canAccessOrder, readOrderAccessToken } from "@/lib/order-access";
+import { clientIp } from "@/lib/auth/ip";
+import { assertRateLimit, RateLimitError } from "@/lib/rate-limit";
 
 const bodySchema = z.object({
   orderId: z.string().min(1),
@@ -19,10 +24,17 @@ const bodySchema = z.object({
     })
     .optional()
     .nullable(),
+  access: z.string().optional().nullable(),
 });
 
 export async function POST(request: Request) {
   try {
+    await assertRateLimit({
+      key: "payments-card",
+      ip: clientIp(request),
+      max: 8,
+    });
+
     const json = await request.json();
     const parsed = bodySchema.safeParse(json);
     if (!parsed.success) {
@@ -30,6 +42,18 @@ export async function POST(request: Request) {
         { message: "Dados do cartão incompletos." },
         { status: 400 },
       );
+    }
+
+    const session = await auth();
+    const access =
+      parsed.data.access ||
+      (await readOrderAccessToken(parsed.data.orderId));
+    const order = await getOrderById(parsed.data.orderId);
+    if (!order) {
+      return NextResponse.json({ message: "Pedido não encontrado." }, { status: 404 });
+    }
+    if (!canAccessOrder(order, session, access)) {
+      return NextResponse.json({ message: "Não autorizado." }, { status: 403 });
     }
 
     const result = await createCardPayment({
@@ -57,6 +81,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json(result);
   } catch (error) {
+    if (error instanceof RateLimitError) {
+      return NextResponse.json({ message: error.message }, { status: 429 });
+    }
     console.error("[payments/card]", error);
     return NextResponse.json(
       { message: mercadoPagoErrorMessage(error) },

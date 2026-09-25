@@ -3,8 +3,19 @@ import { prisma } from "@/lib/prisma";
 import { resetPasswordSchema } from "@/lib/validations/auth";
 import { hashPassword } from "@/lib/auth/password";
 import { hashResetToken } from "@/lib/auth/reset-token";
+import { clientIp } from "@/lib/auth/ip";
+import { assertRateLimit, RateLimitError } from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
+  try {
+    await assertRateLimit({ key: "auth-reset", ip: clientIp(request), max: 10 });
+  } catch (error) {
+    if (error instanceof RateLimitError) {
+      return NextResponse.json({ message: error.message }, { status: 429 });
+    }
+    throw error;
+  }
+
   let body: unknown;
   try {
     body = await request.json();

@@ -2,6 +2,13 @@ import { NextResponse } from "next/server";
 import { markOrderPaid } from "@/services/order.service";
 import { getSiteUrl } from "@/lib/site-url";
 import { isMercadoPagoSandbox } from "@/services/payment.service";
+import {
+  appendOrderAccess,
+  createOrderAccessToken,
+  ORDER_ACCESS_TTL_COOKIE,
+  orderAccessCookieName,
+  orderAccessCookieOptions,
+} from "@/lib/order-access";
 
 /**
  * Aprova um pedido só em localhost + sandbox + MERCADOPAGO_LOCAL_MOCK=true.
@@ -11,9 +18,14 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const orderId = url.searchParams.get("orderId")?.trim();
   const appUrl = getSiteUrl();
-  const isLocal = appUrl.includes("localhost") || appUrl.includes("127.0.0.1");
+  const requestHost = url.hostname;
+  const isLocalRequest =
+    requestHost === "localhost" || requestHost === "127.0.0.1";
+  const isLocalApp =
+    appUrl.includes("localhost") || appUrl.includes("127.0.0.1");
   const allowed =
-    isLocal &&
+    isLocalRequest &&
+    isLocalApp &&
     isMercadoPagoSandbox() &&
     process.env.MERCADOPAGO_LOCAL_MOCK === "true";
 
@@ -26,7 +38,16 @@ export async function GET(request: Request) {
     source: "local-approve",
   });
 
-  return NextResponse.redirect(
-    new URL(`/pedido/${orderId}?result=success`, appUrl),
+  const access = createOrderAccessToken(orderId, ORDER_ACCESS_TTL_COOKIE);
+  const destination = new URL(
+    appendOrderAccess(`/pedido/${orderId}?result=success`, orderId, access),
+    appUrl,
   );
+  const response = NextResponse.redirect(destination);
+  response.cookies.set(
+    orderAccessCookieName(orderId),
+    access,
+    { ...orderAccessCookieOptions(ORDER_ACCESS_TTL_COOKIE), secure: false },
+  );
+  return response;
 }

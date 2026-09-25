@@ -4,7 +4,7 @@ import { generateOrderNumber } from "@/lib/utils";
 import type { CheckoutInput } from "@/lib/validations";
 import { quoteShipping } from "@/services/shipping.service";
 import { applyCoupon } from "@/services/coupon.service";
-import { sendOrderPaidEmail } from "@/lib/mail";
+import { sendOrderPaidEmail, sendOrderCancelledEmail } from "@/lib/mail";
 
 type CartSnapshot = {
   productId: string;
@@ -12,9 +12,38 @@ type CartSnapshot = {
   slug?: string;
 };
 
+/** Libera estoque de pedidos PENDING abandonados (ex.: > 2h sem pagar). */
+export async function releaseStalePendingOrders(maxAgeMs = 2 * 60 * 60 * 1000) {
+  const cutoff = new Date(Date.now() - maxAgeMs);
+  const stale = await prisma.order.findMany({
+    where: {
+      status: OrderStatus.PENDING,
+      createdAt: { lt: cutoff },
+      payment: { status: PaymentStatus.PENDING },
+    },
+    select: { id: true },
+    take: 40,
+  });
+  for (const order of stale) {
+    try {
+      await restoreOrderStock(order.id, PaymentStatus.REJECTED);
+    } catch (error) {
+      console.error("[vesta] falha ao liberar pedido expirado", order.id, error);
+    }
+  }
+  return stale.length;
+}
+
 export async function createOrder(input: CheckoutInput, cart: CartSnapshot[], userId?: string) {
   if (cart.length === 0) {
     throw new Error("Sua sacola está vazia.");
+  }
+
+  // Melhor esforço: não bloqueia o checkout se a limpeza falhar.
+  try {
+    await releaseStalePendingOrders();
+  } catch (error) {
+    console.error("[vesta] releaseStalePendingOrders:", error);
   }
 
   return prisma.$transaction(async (tx) => {
@@ -44,13 +73,14 @@ export async function createOrder(input: CheckoutInput, cart: CartSnapshot[], us
 
     const lines = cart.map((item) => {
       const product = resolveProduct(item)!;
-      if (product.status !== ProductStatus.AVAILABLE || product.stock < item.quantity) {
+      const quantity = Math.max(1, Math.min(Number(item.quantity) || 1, 20));
+      if (product.status !== ProductStatus.AVAILABLE || product.stock < quantity) {
         throw new Error(`${product.name} não está mais disponível.`);
       }
-      if (product.uniquePiece && item.quantity > 1) {
+      if (product.uniquePiece && quantity > 1) {
         throw new Error(`${product.name} é peça única.`);
       }
-      return { item, product };
+      return { item: { ...item, quantity }, product };
     });
 
     const subtotalCents = lines.reduce(
@@ -203,9 +233,20 @@ export async function restoreOrderStock(orderId: string, paymentStatus: PaymentS
   return prisma.$transaction(async (tx) => {
     const order = await tx.order.findUnique({
       where: { id: orderId },
-      include: { items: true },
+      include: { items: true, payment: true },
     });
     if (!order || order.status === OrderStatus.CANCELLED) return order;
+
+    // Pedido pago só sai via reembolso (markOrderRefunded / refundOrderPayment).
+    if (
+      order.payment?.status === PaymentStatus.APPROVED ||
+      order.payment?.status === PaymentStatus.REFUNDED
+    ) {
+      console.error(
+        `[vesta] restoreOrderStock bloqueado: pedido ${orderId} com pagamento ${order.payment.status}`,
+      );
+      return order;
+    }
 
     await tx.order.update({
       where: { id: orderId },
@@ -230,6 +271,63 @@ export async function restoreOrderStock(orderId: string, paymentStatus: PaymentS
 
     return order;
   });
+}
+
+/** Após reembolso: cancela pedido, marca pagamento REFUNDED e devolve peças (mesmo se SOLD). */
+export async function markOrderRefunded(
+  orderId: string,
+  rawPayload?: unknown,
+) {
+  const order = await prisma.$transaction(async (tx) => {
+    const current = await tx.order.findUnique({
+      where: { id: orderId },
+      include: { items: true, payment: true },
+    });
+    if (!current) throw new Error("Pedido não encontrado.");
+    if (current.payment?.status === PaymentStatus.REFUNDED) return current;
+
+    await tx.order.update({
+      where: { id: orderId },
+      data: { status: OrderStatus.CANCELLED },
+    });
+    await tx.payment.update({
+      where: { orderId },
+      data: {
+        status: PaymentStatus.REFUNDED,
+        rawPayload: rawPayload as object | undefined,
+      },
+    });
+
+    for (const item of current.items) {
+      await tx.product.update({
+        where: { id: item.productId },
+        data: {
+          stock: { increment: item.quantity },
+          status: ProductStatus.AVAILABLE,
+        },
+      });
+    }
+
+    return current;
+  });
+
+  try {
+    await sendOrderCancelledEmail({
+      email: order.email,
+      customerName: order.customerName,
+      number: order.number,
+      id: order.id,
+      totalCents: order.totalCents,
+      refunded: true,
+    });
+  } catch (error) {
+    console.error(
+      "[vesta] falha ao enviar e-mail de reembolso:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+
+  return order;
 }
 
 export async function listOrders(filters?: { status?: OrderStatus; q?: string }) {

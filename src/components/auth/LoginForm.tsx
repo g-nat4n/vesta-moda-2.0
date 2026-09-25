@@ -9,10 +9,17 @@ import { Button } from "@/components/ui/Button";
 
 const ERRORS: Record<string, string> = {
   locked: "Muitas tentativas. Aguarde 1 minuto e tente de novo.",
-  email: "Este e-mail não possui cadastro.",
-  password: "Senha incorreta.",
+  invalid: "Não foi possível entrar. Confira o e-mail e a senha.",
   CredentialsSignin: "Não foi possível entrar. Confira o e-mail e a senha.",
 };
+
+/** Só paths relativos locais — evita open redirect via callbackUrl. */
+function safeCallback(url: string | null, fallback: string) {
+  if (!url || !url.startsWith("/") || url.startsWith("//") || url.includes("://")) {
+    return fallback;
+  }
+  return url;
+}
 
 export function LoginForm() {
   const router = useRouter();
@@ -43,9 +50,10 @@ export function LoginForm() {
     const session = await getSession();
     const callback = params.get("callbackUrl");
     if (session?.user?.role === "ADMIN") {
-      router.push(callback?.startsWith("/admin") ? callback : "/admin");
+      const dest = safeCallback(callback, "/admin");
+      router.push(dest.startsWith("/admin") ? dest : "/admin");
     } else {
-      router.push(callback || "/minha-conta");
+      router.push(safeCallback(callback, "/minha-conta"));
     }
     router.refresh();
   }

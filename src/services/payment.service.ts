@@ -1,8 +1,9 @@
-import { MercadoPagoConfig, Preference, Payment } from "mercadopago";
+import { MercadoPagoConfig, Preference, Payment, PaymentRefund } from "mercadopago";
 import { prisma } from "@/lib/prisma";
 import { getSiteUrl } from "@/lib/site-url";
-import { markOrderPaid, restoreOrderStock } from "@/services/order.service";
+import { markOrderPaid, restoreOrderStock, markOrderRefunded } from "@/services/order.service";
 import { PaymentStatus, OrderStatus } from "@prisma/client";
+import { sendOrderCancelledEmail } from "@/lib/mail";
 
 function getClient() {
   const token = process.env.MERCADOPAGO_ACCESS_TOKEN?.trim();
@@ -75,22 +76,43 @@ export function mercadoPagoErrorMessage(error: unknown) {
     const raw = cause || err.message || "";
     const lower = raw.toLowerCase();
 
-    if (
-      lower.includes("unauthorized use of live credentials") ||
-      lower.includes("uma das partes é de teste") ||
-      lower.includes("uma das partes e de teste")
-    ) {
+    if (isMercadoPagoCredentialRestriction(error)) {
       return (
-        "A conta de teste do Mercado Pago não tem permissão para cobrar cartão pela API " +
-        "(Checkout Transparente). Em localhost use MERCADOPAGO_LOCAL_MOCK=true, " +
-        "ou em produção use as Credenciais de produção da conta real da loja."
+        "As credenciais de teste do Mercado Pago não permitem esta operação na API. " +
+        "Em produção use as Credenciais de produção da conta real da loja."
       );
     }
     if (cause) return cause;
     if (err.message) return err.message;
   }
   if (error instanceof Error && error.message) return error.message;
-  return "Não foi possível iniciar o pagamento no Mercado Pago.";
+  return "Não foi possível concluir a operação no Mercado Pago.";
+}
+
+function isMercadoPagoCredentialRestriction(error: unknown) {
+  if (!error || typeof error !== "object") {
+    if (error instanceof Error) {
+      const lower = error.message.toLowerCase();
+      return (
+        lower.includes("unauthorized use of live credentials") ||
+        lower.includes("uma das partes é de teste") ||
+        lower.includes("uma das partes e de teste")
+      );
+    }
+    return false;
+  }
+  const err = error as {
+    message?: string;
+    cause?: Array<{ description?: string; message?: string }>;
+  };
+  const raw = `${err.cause?.[0]?.description ?? ""} ${err.cause?.[0]?.message ?? ""} ${err.message ?? ""}`.toLowerCase();
+  return (
+    raw.includes("unauthorized use of live credentials") ||
+    raw.includes("uma das partes é de teste") ||
+    raw.includes("uma das partes e de teste") ||
+    raw.includes("not authorized to access") ||
+    raw.includes("invalid operators involved")
+  );
 }
 
 export function isMercadoPagoConfigured() {
@@ -193,25 +215,63 @@ export async function createPaymentPreference(orderId: string) {
   };
 }
 
-export async function handleMercadoPagoNotification(paymentId: string) {
+export async function handleMercadoPagoNotification(
+  paymentId: string,
+  expectedOrderId?: string | null,
+) {
   const client = getClient();
   if (!client) return;
 
   const api = new Payment(client);
   const payment = await api.get({ id: paymentId });
-  const orderId = payment.external_reference;
+  const orderId = payment.external_reference ? String(payment.external_reference) : "";
   if (!orderId) return;
+
+  // Impede sync cross-order: payment_id de outro pedido na URL da vítima.
+  if (expectedOrderId && orderId !== expectedOrderId) {
+    console.error(
+      `[vesta] payment ${paymentId} external_reference=${orderId} ≠ orderId=${expectedOrderId}`,
+    );
+    return;
+  }
+
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { payment: true },
+  });
+  if (!order) return;
+
+  // Impede marcar pago se o valor do MP não bater com o pedido.
+  const paidAmount = Number(payment.transaction_amount ?? 0);
+  const expected = Math.max(order.totalCents / 100, 0);
+  const amountOk = Math.abs(paidAmount - expected) < 0.02;
 
   const status = payment.status;
   if (status === "approved") {
-    await markOrderPaid(orderId, String(payment.id), payment);
+    if (!amountOk) {
+      console.error(
+        `[vesta] pagamento ${paymentId} com valor divergente: MP=${paidAmount} pedido=${expected}`,
+      );
+      return;
+    }
+    await markOrderPaid(order.id, String(payment.id), payment);
     return;
   }
-  if (status === "rejected" || status === "cancelled" || status === "refunded") {
-    await restoreOrderStock(
-      orderId,
-      status === "refunded" ? PaymentStatus.REFUNDED : PaymentStatus.REJECTED,
-    );
+  if (status === "refunded") {
+    await markOrderRefunded(order.id, payment);
+    return;
+  }
+  if (status === "rejected" || status === "cancelled") {
+    // Nunca cancela pedido já pago só com status rejected do MP (usa estorno).
+    if (
+      order.payment?.status === PaymentStatus.APPROVED ||
+      order.payment?.status === PaymentStatus.REFUNDED ||
+      order.status === OrderStatus.PAID ||
+      order.status === OrderStatus.CANCELLED
+    ) {
+      return;
+    }
+    await restoreOrderStock(order.id, PaymentStatus.REJECTED);
   }
 }
 
@@ -314,20 +374,154 @@ export async function createCardPayment(input: {
   };
 }
 
-/** Sincroniza o pedido na volta do Checkout Pro (funciona sem webhook, inclusive no localhost). */
+/**
+ * Sincroniza o pedido na volta do Checkout Pro (funciona sem webhook).
+ * Só aceita payment_id real do MP — nunca muta estado só com collection_status na query.
+ */
 export async function syncOrderFromMercadoPagoReturn(input: {
   orderId: string;
   paymentId?: string | null;
-  collectionStatus?: string | null;
 }) {
   const paymentId = input.paymentId?.trim();
-  if (paymentId && paymentId !== "null") {
-    await handleMercadoPagoNotification(paymentId);
-    return;
+  if (!paymentId || paymentId === "null") return;
+  await handleMercadoPagoNotification(paymentId, input.orderId);
+}
+
+/**
+ * Reembolso total no Mercado Pago + cancela o pedido e devolve estoque.
+ * Pagamentos mock/local só atualizam o banco.
+ * Em sandbox, se o MP bloquear o estorno (credenciais de teste), cancela localmente mesmo assim.
+ */
+export async function refundOrderPayment(orderId: string) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { payment: true, items: true },
+  });
+  if (!order) throw new Error("Pedido não encontrado.");
+  if (!order.payment) throw new Error("Pedido sem pagamento.");
+  if (order.payment.status === PaymentStatus.REFUNDED) {
+    return { ok: true as const, alreadyRefunded: true };
+  }
+  if (order.payment.status !== PaymentStatus.APPROVED) {
+    throw new Error("Só é possível reembolsar pedidos com pagamento aprovado.");
   }
 
-  const status = input.collectionStatus?.toLowerCase();
-  if (status === "rejected" || status === "cancelled") {
-    await restoreOrderStock(input.orderId, PaymentStatus.REJECTED);
+  const paymentId = order.payment.providerPaymentId?.trim() || "";
+  const isLocalMock = !paymentId || paymentId.startsWith("local-mock-");
+  let refundedLocally = isLocalMock;
+
+  if (!isLocalMock) {
+    const client = getClient();
+    if (!client) throw new Error("Mercado Pago não configurado.");
+
+    try {
+      const refunds = new PaymentRefund(client);
+      await refunds.total({
+        payment_id: paymentId,
+        requestOptions: {
+          idempotencyKey: `refund-${order.id}`,
+        },
+      });
+    } catch (error) {
+      const appUrl = appBaseUrl();
+      const isLocalDev =
+        appUrl.includes("localhost") || appUrl.includes("127.0.0.1");
+      // Só em localhost: credenciais de teste não estornam na API.
+      // Em produção, falha do MP impede marcar reembolso no banco.
+      if (
+        isLocalDev &&
+        isMercadoPagoSandbox() &&
+        isMercadoPagoCredentialRestriction(error)
+      ) {
+        console.warn(
+          "[vesta] estorno MP indisponível no localhost; cancelando só na loja.",
+          mercadoPagoErrorMessage(error),
+        );
+        refundedLocally = true;
+      } else {
+        throw error;
+      }
+    }
   }
+
+  await markOrderRefunded(order.id, {
+    mock: refundedLocally,
+    providerPaymentId: paymentId || null,
+    localRefundFallback: refundedLocally && !isLocalMock,
+  });
+
+  return {
+    ok: true as const,
+    alreadyRefunded: false,
+    local: refundedLocally,
+  };
+}
+
+const CUSTOMER_CANCELABLE: OrderStatus[] = [
+  OrderStatus.PENDING,
+  OrderStatus.PAID,
+  OrderStatus.PROCESSING,
+];
+
+/** Cancelamento pelo cliente: reembolsa se pago; se ainda pendente, só cancela. */
+export async function cancelOrderByCustomer(orderId: string) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { payment: true },
+  });
+  if (!order) throw new Error("Pedido não encontrado.");
+
+  if (order.status === OrderStatus.CANCELLED || order.payment?.status === PaymentStatus.REFUNDED) {
+    return { ok: true as const, alreadyCancelled: true };
+  }
+
+  if (
+    order.status === OrderStatus.SHIPPED ||
+    order.status === OrderStatus.DELIVERED
+  ) {
+    throw new Error(
+      "Este pedido já foi enviado. Para cancelar, fale com o atelier pelo WhatsApp ou e-mail.",
+    );
+  }
+
+  if (!CUSTOMER_CANCELABLE.includes(order.status)) {
+    throw new Error("Este pedido não pode ser cancelado por aqui.");
+  }
+
+  if (order.payment?.status === PaymentStatus.APPROVED) {
+    await refundOrderPayment(order.id);
+    return { ok: true as const, refunded: true };
+  }
+
+  await restoreOrderStock(order.id, PaymentStatus.REJECTED);
+
+  try {
+    await sendOrderCancelledEmail({
+      email: order.email,
+      customerName: order.customerName,
+      number: order.number,
+      id: order.id,
+      totalCents: order.totalCents,
+      refunded: false,
+    });
+  } catch (error) {
+    console.error(
+      "[vesta] falha ao enviar e-mail de cancelamento:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+
+  return { ok: true as const, refunded: false };
+}
+
+export function canCustomerCancelOrder(order: {
+  status: OrderStatus;
+  payment?: { status: PaymentStatus } | null;
+}) {
+  if (order.status === OrderStatus.CANCELLED) return false;
+  if (order.payment?.status === PaymentStatus.REFUNDED) return false;
+  if (order.status === OrderStatus.SHIPPED || order.status === OrderStatus.DELIVERED) {
+    return false;
+  }
+  return CUSTOMER_CANCELABLE.includes(order.status);
 }

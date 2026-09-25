@@ -34,7 +34,7 @@ export function ForgotPasswordForm() {
       <div className="mx-auto max-w-md space-y-4 py-20">
         <p className="eyebrow">Recuperar senha</p>
         <h1 className="display text-4xl">E-mail enviado</h1>
-        <p className="text-sm text-taupe">Enviamos o link para este e-mail. Ele vale por 30 minutos.</p>
+        <p className="text-sm text-taupe">Enviamos o link se este e-mail estiver cadastrado. Ele vale por 30 minutos.</p>
         <Link href="/login" className="inline-block text-[11px] uppercase tracking-[0.16em] text-burgundy">
           Voltar ao login
         </Link>
@@ -46,7 +46,9 @@ export function ForgotPasswordForm() {
     <form onSubmit={onSubmit} className="mx-auto max-w-md space-y-4 py-20">
       <p className="eyebrow">Recuperar senha</p>
       <h1 className="display text-4xl">Esqueceu a senha?</h1>
-      <p className="text-sm text-taupe">Informe o e-mail da sua conta. Enviamos o link só se ele existir no cadastro.</p>
+      <p className="text-sm text-taupe">
+        Informe o e-mail da sua conta. Se ele existir, enviamos o link de redefinição.
+      </p>
       <Input label="E-mail" name="email" type="email" autoComplete="email" required />
       {error ? <p className="text-sm text-wine">{error}</p> : null}
       <Button type="submit" className="w-full" disabled={pending}>
