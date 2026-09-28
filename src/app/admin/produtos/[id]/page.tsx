@@ -8,15 +8,12 @@ import { listCategories } from "@/services/category.service";
 import { prisma } from "@/lib/prisma";
 import { ImageUpload } from "@/components/admin/ImageUpload";
 import {
-  addImageByUrlAction,
   archiveProductAction,
   deleteProductAction,
   deleteProductImageAction,
   markSoldAction,
 } from "@/app/admin/actions";
 import { AdminMiniButton, ConfirmAction } from "@/components/admin/AdminActions";
-import { Input } from "@/components/ui/Input";
-import { Button } from "@/components/ui/Button";
 import { SafeImage } from "@/components/ui/SafeImage";
 
 type Params = Promise<{ id: string }>;
@@ -105,13 +102,6 @@ export default async function EditProductPage({ params }: { params: Params }) {
           ))}
         </div>
         <ImageUpload productId={product.id} />
-        <form action={addImageByUrlAction} className="mt-6 space-y-3">
-          <input type="hidden" name="productId" value={product.id} />
-          <Input label="Ou cole uma URL de imagem" name="url" />
-          <Button type="submit" variant="ghost">
-            Adicionar URL
-          </Button>
-        </form>
       </section>
     </AdminShell>
   );

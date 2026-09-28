@@ -46,7 +46,6 @@ export async function saveProductAction(_prev: { error?: string } | null, formDa
     material: String(formData.get("material") || "") || undefined,
     categoryId: String(formData.get("categoryId") ?? ""),
     lookId: String(formData.get("lookId") || "") || null,
-    imageUrl: String(formData.get("imageUrl") || "") || undefined,
     measurements: {
       bust: String(formData.get("bust") || "") || undefined,
       waist: String(formData.get("waist") || "") || undefined,
@@ -160,7 +159,6 @@ export async function saveCategoryAction(formData: FormData) {
   const parsed = categoryFormSchema.parse({
     name: formData.get("name"),
     description: String(formData.get("description") || "") || undefined,
-    imageUrl: String(formData.get("imageUrl") || ""),
     active: formData.get("active") === "on",
   });
   await upsertCategory(parsed, id || undefined);
@@ -210,25 +208,6 @@ export async function refundOrderAction(formData: FormData) {
   revalidatePath(`/pedido/${id}`);
   revalidatePath("/produtos");
   return { ok: true as const };
-}
-
-export async function addImageByUrlAction(formData: FormData) {
-  await requireAdmin();
-  const productId = String(formData.get("productId"));
-  const url = String(formData.get("url"));
-  const product = await prisma.product.findUnique({ where: { id: productId } });
-  if (!product || !url) return;
-  const count = await prisma.productImage.count({ where: { productId } });
-  await prisma.productImage.create({
-    data: {
-      productId,
-      url,
-      alt: product.name,
-      kind: count === 0 ? "MAIN" : "DETAIL",
-      sortOrder: count,
-    },
-  });
-  revalidatePath(`/admin/produtos/${productId}`);
 }
 
 export async function deleteProductImageAction(formData: FormData) {

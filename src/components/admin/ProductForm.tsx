@@ -85,7 +85,6 @@ export function ProductForm({
         ))}
       </Select>
       <Input label="Material" name="material" defaultValue={product?.material ?? ""} />
-      <Input label="URL da imagem (opcional)" name="imageUrl" defaultValue="" />
       <label className="block text-[11px] font-semibold uppercase tracking-[0.2em] text-taupe">
         Fotos do computador
         <input
@@ -96,7 +95,7 @@ export function ProductForm({
           className="mt-2 block w-full text-sm font-normal normal-case tracking-normal text-ink file:mr-3 file:border-0 file:bg-gold file:px-4 file:py-2 file:text-xs file:font-bold file:uppercase file:tracking-[0.12em] file:text-ink"
         />
       </label>
-      <p className="text-xs text-taupe">Pode escolher várias fotos. Elas entram no acervo junto com a peça.</p>
+      <p className="text-xs text-taupe">Só envio do computador. Pode escolher várias fotos de uma vez.</p>
       <div className="grid gap-4 md:grid-cols-5">
         <Input label="Busto" name="bust" defaultValue={measurements.bust} />
         <Input label="Cintura" name="waist" defaultValue={measurements.waist} />

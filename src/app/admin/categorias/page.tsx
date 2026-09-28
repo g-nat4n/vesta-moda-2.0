@@ -35,7 +35,6 @@ export default async function AdminCategoriesPage({
       <form action={saveCategoryAction} className="mt-8 grid max-w-xl gap-3 border border-line bg-white p-6">
         <Input label="Nome" name="name" required />
         <Textarea label="Descrição" name="description" />
-        <Input label="Imagem URL" name="imageUrl" />
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" name="active" defaultChecked />
           Ativa na loja
