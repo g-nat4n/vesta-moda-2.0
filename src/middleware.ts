@@ -39,7 +39,8 @@ export default auth((req) => {
   const isAdminPage = pathname === "/admin" || pathname.startsWith("/admin/");
   const isAdminApi = pathname.startsWith("/api/admin");
   const isAccount = pathname === "/minha-conta" || pathname.startsWith("/minha-conta/");
-  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+  // Middleware roda no Edge Runtime: não depender de Buffer/Node.
+  const nonce = btoa(crypto.randomUUID());
   const csp = contentSecurityPolicy(nonce);
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-nonce", nonce);
@@ -76,6 +77,7 @@ export default auth((req) => {
 });
 
 export const config = {
+  runtime: "nodejs",
   matcher: [
     {
       source: "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",

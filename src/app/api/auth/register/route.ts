@@ -29,6 +29,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: parsed.error.issues[0]?.message }, { status: 400 });
   }
 
+  // Produção nunca cria conta sem conseguir verificar o e-mail.
+  if (process.env.NODE_ENV === "production" && !isMailConfigured()) {
+    console.error("[vesta] cadastro bloqueado: SMTP não configurado em produção.");
+    return NextResponse.json(
+      { message: "Não foi possível criar a conta agora. Tente novamente mais tarde." },
+      { status: 503 },
+    );
+  }
+
   const email = parsed.data.email.toLowerCase();
   const exists = await prisma.user.findUnique({
     where: { email },

@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { MercadoPagoConfig, Preference, Payment, PaymentRefund } from "mercadopago";
 import { prisma } from "@/lib/prisma";
 import { getSiteUrl } from "@/lib/site-url";
@@ -116,6 +117,36 @@ function isMercadoPagoCredentialRestriction(error: unknown) {
 
 export function isMercadoPagoConfigured() {
   return Boolean(process.env.MERCADOPAGO_ACCESS_TOKEN?.trim());
+}
+
+async function refundPaymentApprovedAfterCancellation(
+  client: MercadoPagoConfig,
+  orderId: string,
+  paymentId: string,
+  amount?: number | null,
+  currency?: string | null,
+) {
+  const refunds = new PaymentRefund(client);
+  await refunds.total({
+    payment_id: paymentId,
+    requestOptions: {
+      idempotencyKey: `late-refund-${orderId}-${paymentId}`,
+    },
+  });
+  // O cancelamento já devolveu o estoque. Aqui registra só o estorno financeiro.
+  await prisma.payment.update({
+    where: { orderId },
+    data: {
+      status: PaymentStatus.REFUNDED,
+      providerPaymentId: paymentId,
+      rawPayload: {
+        id: paymentId,
+        status: "refunded-after-cancel",
+        transaction_amount: amount ?? null,
+        currency_id: currency ?? null,
+      },
+    },
+  });
 }
 
 export async function createPaymentPreference(orderId: string) {
@@ -262,7 +293,36 @@ export async function handleMercadoPagoNotification(
       );
       return;
     }
-    await markOrderPaid(order.id, String(payment.id), payment);
+
+    // O cliente pode ter cancelado enquanto o Mercado Pago aprovava.
+    // Nesse caso, estorna imediatamente e não reserva/vende estoque novamente.
+    if (order.status === OrderStatus.CANCELLED) {
+      await refundPaymentApprovedAfterCancellation(
+        client,
+        order.id,
+        String(payment.id),
+        payment.transaction_amount,
+        payment.currency_id,
+      );
+      return;
+    }
+
+    const marked = await markOrderPaid(order.id, String(payment.id), payment);
+    if (!marked.changed) {
+      const latest = await prisma.order.findUnique({
+        where: { id: order.id },
+        select: { status: true },
+      });
+      if (latest?.status === OrderStatus.CANCELLED) {
+        await refundPaymentApprovedAfterCancellation(
+          client,
+          order.id,
+          String(payment.id),
+          payment.transaction_amount,
+          payment.currency_id,
+        );
+      }
+    }
     return;
   }
   if (status === "refunded") {
@@ -296,7 +356,7 @@ export async function createCardPayment(input: {
   const client = getClient();
   if (!client) throw new Error("Mercado Pago não configurado.");
 
-  const order = await prisma.order.findUnique({
+  let order = await prisma.order.findUnique({
     where: { id: input.orderId },
     include: { payment: true },
   });
@@ -317,25 +377,52 @@ export async function createCardPayment(input: {
     return { status: "approved", statusDetail: "zero_total", paymentId: null };
   }
 
-  const currentProviderId = order.payment?.providerPaymentId ?? null;
-  if (currentProviderId?.startsWith("inflight:")) {
-    const startedAt = Number(currentProviderId.slice("inflight:".length));
-    if (Number.isFinite(startedAt) && Date.now() - startedAt < 2 * 60 * 1000) {
-      throw new Error("Já existe um pagamento em andamento para este pedido. Aguarde um instante.");
+  let currentProviderId = order.payment?.providerPaymentId ?? null;
+
+  // Se o MP já devolveu um payment_id pendente, consulta antes de criar outra cobrança.
+  if (
+    order.payment?.status === PaymentStatus.PENDING &&
+    currentProviderId &&
+    !currentProviderId.startsWith("inflight:")
+  ) {
+    await handleMercadoPagoNotification(currentProviderId, order.id);
+    const refreshed = await prisma.order.findUnique({
+      where: { id: order.id },
+      include: { payment: true },
+    });
+    if (!refreshed) throw new Error("Pedido não encontrado.");
+    order = refreshed;
+    currentProviderId = order.payment?.providerPaymentId ?? null;
+    if (order.payment?.status === PaymentStatus.APPROVED) {
+      return {
+        status: "approved",
+        statusDetail: "already_approved",
+        paymentId: currentProviderId,
+      };
+    }
+    if (order.payment?.status === PaymentStatus.PENDING) {
+      throw new Error("O pagamento anterior ainda está em análise. Aguarde a confirmação.");
     }
   }
 
-  const lockId = `inflight:${Date.now()}`;
-  const claimed = await prisma.payment.updateMany({
-    where: {
-      orderId: order.id,
-      status: { in: [PaymentStatus.PENDING, PaymentStatus.REJECTED] },
-      providerPaymentId: currentProviderId,
-    },
-    data: { providerPaymentId: lockId },
-  });
-  if (claimed.count !== 1) {
-    throw new Error("Já existe um pagamento em andamento para este pedido. Aguarde um instante.");
+  // Retry após resposta de rede perdida reutiliza a MESMA chave no Mercado Pago.
+  // Assim, o provedor devolve a cobrança original em vez de cobrar novamente.
+  const lockId = currentProviderId?.startsWith("inflight:")
+    ? currentProviderId
+    : `inflight:${crypto.randomUUID()}`;
+
+  if (!currentProviderId?.startsWith("inflight:")) {
+    const claimed = await prisma.payment.updateMany({
+      where: {
+        orderId: order.id,
+        status: { in: [PaymentStatus.PENDING, PaymentStatus.REJECTED] },
+        providerPaymentId: currentProviderId,
+      },
+      data: { providerPaymentId: lockId },
+    });
+    if (claimed.count !== 1) {
+      throw new Error("Já existe um pagamento em andamento para este pedido. Aguarde um instante.");
+    }
   }
 
   const sandbox = isMercadoPagoSandbox();
@@ -385,16 +472,29 @@ export async function createCardPayment(input: {
     },
   });
   } catch (error) {
-    await prisma.payment.updateMany({
-      where: { orderId: order.id, providerPaymentId: lockId },
-      data: { providerPaymentId: null, status: PaymentStatus.PENDING },
-    });
+    // Não limpa a chave: não sabemos se o MP cobrou antes da falha de rede.
+    // A próxima tentativa repete a mesma idempotencyKey e reconcilia com segurança.
     throw error;
   }
 
   const status = String(created.status ?? "");
   if (status === "approved") {
-    await markOrderPaid(order.id, String(created.id), created);
+    const marked = await markOrderPaid(order.id, String(created.id), created);
+    if (!marked.changed) {
+      const latest = await prisma.order.findUnique({
+        where: { id: order.id },
+        select: { status: true },
+      });
+      if (latest?.status === OrderStatus.CANCELLED) {
+        await refundPaymentApprovedAfterCancellation(
+          client,
+          order.id,
+          String(created.id),
+          created.transaction_amount,
+          created.currency_id,
+        );
+      }
+    }
   } else {
     // Mantém o pedido aberto para nova tentativa no Brick (não cancela estoque).
     await prisma.payment.update({

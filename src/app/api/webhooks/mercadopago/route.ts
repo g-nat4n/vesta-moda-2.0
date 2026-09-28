@@ -21,11 +21,10 @@ function verifyMercadoPagoSignature(request: Request, dataId: string) {
 
   if (!parts.ts || !parts.v1) return false;
 
-  let tsMs = Number(parts.ts);
-  if (!Number.isFinite(tsMs)) return false;
-  if (tsMs < 1e12) tsMs *= 1000;
-  // Reenvio de uma notificação velha não passa, mesmo com a assinatura original.
-  if (Math.abs(Date.now() - tsMs) > 5 * 60 * 1000) return false;
+  // O timestamp faz parte da assinatura, mas não deve expirar aqui:
+  // o Mercado Pago pode reenviar eventos legítimos após indisponibilidade.
+  // Idempotência é garantida pelas transições atômicas no banco.
+  if (!Number.isFinite(Number(parts.ts))) return false;
 
   const manifest = `id:${dataId};request-id:${requestId};ts:${parts.ts};`;
   const expected = crypto.createHmac("sha256", secret).update(manifest).digest("hex");

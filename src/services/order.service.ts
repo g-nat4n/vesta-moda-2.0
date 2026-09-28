@@ -12,38 +12,9 @@ type CartSnapshot = {
   slug?: string;
 };
 
-/** Libera estoque de pedidos PENDING abandonados (ex.: > 2h sem pagar). */
-export async function releaseStalePendingOrders(maxAgeMs = 2 * 60 * 60 * 1000) {
-  const cutoff = new Date(Date.now() - maxAgeMs);
-  const stale = await prisma.order.findMany({
-    where: {
-      status: OrderStatus.PENDING,
-      createdAt: { lt: cutoff },
-      payment: { status: PaymentStatus.PENDING },
-    },
-    select: { id: true },
-    take: 40,
-  });
-  for (const order of stale) {
-    try {
-      await restoreOrderStock(order.id, PaymentStatus.REJECTED);
-    } catch (error) {
-      console.error("[vesta] falha ao liberar pedido expirado", order.id, error);
-    }
-  }
-  return stale.length;
-}
-
 export async function createOrder(input: CheckoutInput, cart: CartSnapshot[], userId?: string) {
   if (cart.length === 0) {
     throw new Error("Sua sacola está vazia.");
-  }
-
-  // Melhor esforço: não bloqueia o checkout se a limpeza falhar.
-  try {
-    await releaseStalePendingOrders();
-  } catch (error) {
-    console.error("[vesta] releaseStalePendingOrders:", error);
   }
 
   return prisma.$transaction(async (tx) => {
@@ -193,43 +164,47 @@ export async function markOrderPaid(orderId: string, providerPaymentId?: string,
     });
     if (!order) throw new Error("Pedido não encontrado.");
 
-    const alreadyPaid = order.payment?.status === PaymentStatus.APPROVED;
-
-    if (!alreadyPaid) {
-      await tx.order.update({
-        where: { id: orderId },
-        data: { status: OrderStatus.PAID },
-      });
-
-      await tx.payment.update({
-        where: { orderId },
-        data: {
-          status: PaymentStatus.APPROVED,
-          providerPaymentId,
-          rawPayload: paymentTrace(rawPayload),
-        },
-      });
-
-      for (const item of order.items) {
-        // O estoque já baixou na reserva. Aqui só marca vendido se não sobrou unidade.
-        const product = await tx.product.findUnique({
-          where: { id: item.productId },
-          select: { stock: true },
-        });
-        if (!product) continue;
-        await tx.product.update({
-          where: { id: item.productId },
-          data: {
-            status: product.stock <= 0 ? ProductStatus.SOLD : ProductStatus.AVAILABLE,
-          },
-        });
-      }
+    if (order.payment?.status === PaymentStatus.APPROVED) {
+      return { order, changed: false };
     }
 
-    return { order, alreadyPaid };
+    // Somente uma operação pode mover PENDING -> PAID. Cancelamento concorrente perde.
+    const claimed = await tx.order.updateMany({
+      where: { id: orderId, status: OrderStatus.PENDING },
+      data: { status: OrderStatus.PAID },
+    });
+    if (claimed.count !== 1) {
+      return { order, changed: false };
+    }
+
+    await tx.payment.update({
+      where: { orderId },
+      data: {
+        status: PaymentStatus.APPROVED,
+        providerPaymentId,
+        rawPayload: paymentTrace(rawPayload),
+      },
+    });
+
+    for (const item of order.items) {
+      // O estoque já baixou na reserva. Aqui só marca vendido se não sobrou unidade.
+      const product = await tx.product.findUnique({
+        where: { id: item.productId },
+        select: { stock: true },
+      });
+      if (!product) continue;
+      await tx.product.update({
+        where: { id: item.productId },
+        data: {
+          status: product.stock <= 0 ? ProductStatus.SOLD : ProductStatus.AVAILABLE,
+        },
+      });
+    }
+
+    return { order, changed: true };
   });
 
-  if (!result.alreadyPaid) {
+  if (result.changed) {
     try {
       await sendOrderPaidEmail({
         email: result.order.email,
@@ -256,7 +231,7 @@ export async function markOrderPaid(orderId: string, providerPaymentId?: string,
     }
   }
 
-  return result.order;
+  return result;
 }
 
 export async function restoreOrderStock(orderId: string, paymentStatus: PaymentStatus) {
@@ -265,23 +240,15 @@ export async function restoreOrderStock(orderId: string, paymentStatus: PaymentS
       where: { id: orderId },
       include: { items: true, payment: true },
     });
-    if (!order || order.status === OrderStatus.CANCELLED) return order;
+    if (!order) return order;
 
-    // Pedido pago só sai via reembolso (markOrderRefunded / refundOrderPayment).
-    if (
-      order.payment?.status === PaymentStatus.APPROVED ||
-      order.payment?.status === PaymentStatus.REFUNDED
-    ) {
-      console.error(
-        `[vesta] restoreOrderStock bloqueado: pedido ${orderId} com pagamento ${order.payment.status}`,
-      );
-      return order;
-    }
-
-    await tx.order.update({
-      where: { id: orderId },
+    // Claim atômico: pagamento concorrente ou outro cancelamento impede estoque duplicado.
+    const claimed = await tx.order.updateMany({
+      where: { id: orderId, status: OrderStatus.PENDING },
       data: { status: OrderStatus.CANCELLED },
     });
+    if (claimed.count !== 1) return order;
+
     await tx.payment.update({
       where: { orderId },
       data: { status: paymentStatus },
@@ -308,24 +275,31 @@ export async function markOrderRefunded(
   orderId: string,
   rawPayload?: unknown,
 ) {
-  const order = await prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const current = await tx.order.findUnique({
       where: { id: orderId },
       include: { items: true, payment: true },
     });
     if (!current) throw new Error("Pedido não encontrado.");
-    if (current.payment?.status === PaymentStatus.REFUNDED) return current;
+    if (current.payment?.status === PaymentStatus.REFUNDED) {
+      return { order: current, changed: false };
+    }
 
-    await tx.order.update({
-      where: { id: orderId },
-      data: { status: OrderStatus.CANCELLED },
-    });
-    await tx.payment.update({
-      where: { orderId },
+    // Apenas um webhook/reembolso pode vencer APPROVED -> REFUNDED.
+    const claimed = await tx.payment.updateMany({
+      where: { orderId, status: PaymentStatus.APPROVED },
       data: {
         status: PaymentStatus.REFUNDED,
         rawPayload: paymentTrace(rawPayload),
       },
+    });
+    if (claimed.count !== 1) {
+      return { order: current, changed: false };
+    }
+
+    await tx.order.update({
+      where: { id: orderId },
+      data: { status: OrderStatus.CANCELLED },
     });
 
     for (const item of current.items) {
@@ -338,26 +312,28 @@ export async function markOrderRefunded(
       });
     }
 
-    return current;
+    return { order: current, changed: true };
   });
 
-  try {
-    await sendOrderCancelledEmail({
-      email: order.email,
-      customerName: order.customerName,
-      number: order.number,
-      id: order.id,
-      totalCents: order.totalCents,
-      refunded: true,
-    });
-  } catch (error) {
-    console.error(
-      "[vesta] falha ao enviar e-mail de reembolso:",
-      error instanceof Error ? error.message : error,
-    );
+  if (result.changed) {
+    try {
+      await sendOrderCancelledEmail({
+        email: result.order.email,
+        customerName: result.order.customerName,
+        number: result.order.number,
+        id: result.order.id,
+        totalCents: result.order.totalCents,
+        refunded: true,
+      });
+    } catch (error) {
+      console.error(
+        "[vesta] falha ao enviar e-mail de reembolso:",
+        error instanceof Error ? error.message : error,
+      );
+    }
   }
 
-  return order;
+  return result.order;
 }
 
 export async function listOrders(filters?: { status?: OrderStatus; q?: string }) {

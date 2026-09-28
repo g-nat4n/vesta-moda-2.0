@@ -27,17 +27,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         return token;
       }
 
-      if (!token.id || !token.pwd) {
+      const tokenId = typeof token.id === "string" ? token.id : "";
+      const tokenPwd = typeof token.pwd === "string" ? token.pwd : "";
+
+      if (!tokenId || !tokenPwd) {
         token.invalid = true;
         token.role = "CUSTOMER";
         return token;
       }
 
       const dbUser = await prisma.user.findUnique({
-        where: { id: token.id },
+        where: { id: tokenId },
         select: { role: true, passwordHash: true },
       });
-      if (!dbUser?.passwordHash || passwordStamp(dbUser.passwordHash) !== token.pwd) {
+      if (!dbUser?.passwordHash || passwordStamp(dbUser.passwordHash) !== tokenPwd) {
         token.invalid = true;
         token.id = undefined;
         token.role = "CUSTOMER";
@@ -55,8 +58,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.role = "CUSTOMER";
         return session;
       }
-      session.user.id = token.id;
-      session.user.role = token.role ?? "CUSTOMER";
+      session.user.id = typeof token.id === "string" ? token.id : "";
+      session.user.role = token.role === "ADMIN" ? "ADMIN" : "CUSTOMER";
       return session;
     },
   },
