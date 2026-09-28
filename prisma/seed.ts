@@ -5,18 +5,33 @@ import { FEATURED_PIECES } from "../src/lib/brand";
 const prisma = new PrismaClient();
 
 async function main() {
-  const passwordHash = await bcrypt.hash(process.env.ADMIN_PASSWORD ?? "altere-esta-senha", 12);
+  const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+  const password = process.env.ADMIN_PASSWORD?.trim();
+  const blocked = new Set(["altere-esta-senha", "password", "admin123", "12345678"]);
+  if (!email || !password || password.length < 12 || blocked.has(password)) {
+    throw new Error(
+      "Defina ADMIN_EMAIL e ADMIN_PASSWORD no ambiente antes do seed. A senha precisa ter pelo menos 12 caracteres e não pode ser a do exemplo.",
+    );
+  }
 
-  await prisma.user.upsert({
-    where: { email: process.env.ADMIN_EMAIL ?? "admin@vestamoda.com" },
-    update: { role: Role.ADMIN, passwordHash },
-    create: {
-      name: "Atelier Vesta",
-      email: process.env.ADMIN_EMAIL ?? "admin@vestamoda.com",
-      passwordHash,
-      role: Role.ADMIN,
-    },
-  });
+  const passwordHash = await bcrypt.hash(password, 12);
+  const existing = await prisma.user.findUnique({ where: { email } });
+  if (!existing) {
+    await prisma.user.create({
+      data: {
+        name: "Atelier Vesta",
+        email,
+        passwordHash,
+        role: Role.ADMIN,
+      },
+    });
+  } else if (existing.role !== Role.ADMIN) {
+    // Não troca a senha de quem já existe. Só garante o papel.
+    await prisma.user.update({
+      where: { email },
+      data: { role: Role.ADMIN },
+    });
+  }
 
   const categories = await Promise.all(
     [

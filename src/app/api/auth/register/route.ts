@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth/password";
+import { createResetToken } from "@/lib/auth/reset-token";
 import { registerSchema } from "@/lib/validations";
 import { clientIp } from "@/lib/auth/ip";
 import { assertRateLimit, RateLimitError } from "@/lib/rate-limit";
+import { isMailConfigured, sendMail } from "@/lib/mail";
+import { getSiteUrl } from "@/lib/site-url";
 
 export async function POST(request: Request) {
   try {
@@ -39,14 +42,42 @@ export async function POST(request: Request) {
     );
   }
 
+  const verify = isMailConfigured() ? createResetToken() : null;
   await prisma.user.create({
     data: {
       name: parsed.data.name,
       email,
       phone: parsed.data.phone,
       passwordHash: await hashPassword(parsed.data.password),
+      emailVerifyHash: verify?.hash,
+      emailVerifyExpires: verify ? new Date(Date.now() + 24 * 60 * 60 * 1000) : null,
     },
   });
 
-  return NextResponse.json({ ok: true });
+  if (verify) {
+    const link = `${getSiteUrl().replace(/\/$/, "")}/api/auth/verify-email?token=${verify.token}`;
+    try {
+      await sendMail(
+        email,
+        "Confirme seu e-mail · Vesta Moda",
+        `<p>Olá, ${parsed.data.name.replace(/</g, "")}.</p>
+         <p><a href="${link}">Confirme seu e-mail</a> para entrar na conta. O link vale 24 horas.</p>`,
+      );
+    } catch (error) {
+      console.error("[vesta] falha ao enviar confirmação:", error instanceof Error ? error.message : error);
+      await prisma.user.delete({ where: { email } });
+      return NextResponse.json(
+        { message: "Não foi possível criar a conta agora. Tente de novo." },
+        { status: 400 },
+      );
+    }
+  }
+
+  return NextResponse.json({
+    ok: true,
+    needsVerification: Boolean(verify),
+    message: verify
+      ? "Enviamos um link para confirmar o e-mail. Depois disso você já pode entrar."
+      : undefined,
+  });
 }

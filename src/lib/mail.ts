@@ -1,6 +1,7 @@
 import nodemailer from "nodemailer";
 import { formatBRL } from "@/lib/format";
 import { getSiteUrl } from "@/lib/site-url";
+import { prisma } from "@/lib/prisma";
 import { createOrderAccessToken, ORDER_ACCESS_TTL_EMAIL } from "@/lib/order-access";
 
 function smtpUser() {
@@ -94,8 +95,16 @@ export async function sendOrderPaidEmail(order: OrderPaidMail) {
   }
 
   const site = getSiteUrl().replace(/\/$/, "");
-  const access = createOrderAccessToken(order.id, ORDER_ACCESS_TTL_EMAIL);
-  // claim troca o token da query por cookie HttpOnly (menos vazamento via Referer).
+  const accessRow = await prisma.order.findUnique({
+    where: { id: order.id },
+    select: { accessVersion: true },
+  });
+  const access = createOrderAccessToken(
+    order.id,
+    ORDER_ACCESS_TTL_EMAIL,
+    accessRow?.accessVersion ?? 0,
+  );
+  // claim troca o token da query por cookie HttpOnly e invalida este link.
   const orderUrl = `${site}/api/orders/${order.id}/claim?access=${encodeURIComponent(access)}`;
   const accountUrl = `${site}/minha-conta`;
   const shopUrl = `${site}/produtos`;
@@ -237,7 +246,15 @@ export async function sendOrderCancelledEmail(order: {
   }
 
   const site = getSiteUrl().replace(/\/$/, "");
-  const access = createOrderAccessToken(order.id, ORDER_ACCESS_TTL_EMAIL);
+  const accessRow = await prisma.order.findUnique({
+    where: { id: order.id },
+    select: { accessVersion: true },
+  });
+  const access = createOrderAccessToken(
+    order.id,
+    ORDER_ACCESS_TTL_EMAIL,
+    accessRow?.accessVersion ?? 0,
+  );
   const orderUrl = `${site}/api/orders/${order.id}/claim?access=${encodeURIComponent(access)}`;
   const shopUrl = `${site}/produtos`;
   const refunded = Boolean(order.refunded);

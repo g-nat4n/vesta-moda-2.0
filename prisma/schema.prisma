@@ -68,6 +68,8 @@ model User {
   passwordHash         String?
   passwordResetHash    String?
   passwordResetExpires DateTime?
+  emailVerifyHash      String?
+  emailVerifyExpires   DateTime?
   role                 Role      @default(CUSTOMER)
   cpf                  String?
   phone                String?
@@ -169,13 +171,17 @@ model ProductImage {
 }
 
 model Coupon {
-  id          String    @id @default(cuid())
-  code        String    @unique
-  percentOff  Int?
-  amountCents Int?
-  active      Boolean   @default(true)
-  expiresAt   DateTime?
-  orders      Order[]
+  id               String    @id @default(cuid())
+  code             String    @unique
+  percentOff       Int?
+  amountCents      Int?
+  active           Boolean   @default(true)
+  expiresAt        DateTime?
+  /// Teto de usos. Código vazado não fica infinito.
+  maxUses          Int       @default(100)
+  usedCount        Int       @default(0)
+  minSubtotalCents Int?
+  orders           Order[]
 }
 
 model Order {
@@ -204,6 +210,8 @@ model Order {
   couponId        String?
   coupon          Coupon?     @relation(fields: [couponId], references: [id])
   couponCode      String?
+  /// Sobe quando o link do e-mail é aberto. O token antigo deixa de valer.
+  accessVersion   Int         @default(0)
   notes           String?
   items           OrderItem[]
   payment         Payment?

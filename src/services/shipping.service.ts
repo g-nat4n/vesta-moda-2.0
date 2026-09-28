@@ -73,8 +73,19 @@ export async function quoteShipping(zip: string): Promise<ShippingQuote[]> {
     throw new Error("Informe um CEP válido.");
   }
 
-  const quotes: ShippingQuote[] = [
-    {
+  const correios = await quoteCorreios(cep);
+  const origin = onlyDigits(process.env.SHIPPING_ORIGIN_CEP ?? "");
+  const pickupPrefix = (
+    process.env.PICKUP_CEP_PREFIX?.replace(/\D/g, "") || origin.slice(0, 5)
+  ).slice(0, 5);
+  // Com frete real dos Correios, retirada grátis só na área da loja.
+  // Sem Correios, a retirada continua disponível para não travar a venda.
+  const pickupAllowed =
+    correios.length === 0 || pickupPrefix.length < 2 || cep.startsWith(pickupPrefix);
+
+  const quotes: ShippingQuote[] = [];
+  if (pickupAllowed) {
+    quotes.push({
       id: "pickup",
       carrier: "Vesta",
       service: "pickup",
@@ -82,10 +93,9 @@ export async function quoteShipping(zip: string): Promise<ShippingQuote[]> {
       priceCents: 0,
       days: 2,
       source: "pickup",
-    },
-  ];
+    });
+  }
 
-  const correios = await quoteCorreios(cep);
   return [...quotes, ...correios];
 }
 

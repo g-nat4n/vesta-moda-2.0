@@ -4,9 +4,9 @@ services:
     container_name: vesta-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: vesta
-      POSTGRES_PASSWORD: vesta
-      POSTGRES_DB: vesta
+      POSTGRES_USER: ${POSTGRES_USER:-vesta}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no .env}
+      POSTGRES_DB: ${POSTGRES_DB:-vesta}
     ports:
       - "55432:5432"
     volumes:

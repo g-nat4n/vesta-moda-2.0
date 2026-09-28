@@ -1,4 +1,5 @@
 import { v2 as cloudinary } from "cloudinary";
+import { readVerifiedImage } from "@/lib/uploads";
 
 function configured() {
   return Boolean(
@@ -12,19 +13,12 @@ export function isCloudinaryConfigured() {
   return configured();
 }
 
-const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
-const MAX_BYTES = 8 * 1024 * 1024;
-
 export async function uploadImage(file: File) {
   if (!configured()) {
     throw new Error("Cloudinary não configurado.");
   }
-  if (!ALLOWED_TYPES.has(file.type)) {
-    throw new Error("Use JPG, PNG, WEBP ou GIF.");
-  }
-  if (file.size > MAX_BYTES) {
-    throw new Error("Cada imagem pode ter no máximo 8 MB.");
-  }
+
+  const { buffer, mime } = await readVerifiedImage(file);
 
   cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -32,8 +26,7 @@ export async function uploadImage(file: File) {
     api_secret: process.env.CLOUDINARY_API_SECRET,
   });
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const dataUri = `data:${file.type};base64,${buffer.toString("base64")}`;
+  const dataUri = `data:${mime};base64,${buffer.toString("base64")}`;
 
   const result = await cloudinary.uploader.upload(dataUri, {
     folder: "vesta-moda",

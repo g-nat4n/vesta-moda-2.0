@@ -8,8 +8,9 @@ import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 
 const ERRORS: Record<string, string> = {
-  locked: "Muitas tentativas. Aguarde 1 minuto e tente de novo.",
+  locked: "Muitas tentativas. Aguarde 15 minutos e tente de novo.",
   invalid: "Não foi possível entrar. Confira o e-mail e a senha.",
+  unverified: "Confirme o e-mail antes de entrar. O link está na sua caixa de entrada.",
   CredentialsSignin: "Não foi possível entrar. Confira o e-mail e a senha.",
 };
 
@@ -26,7 +27,13 @@ export function LoginForm() {
   const params = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const [notice] = useState(
-    params.get("reset") === "ok" ? "Senha atualizada. Entre com a nova senha." : null,
+    params.get("reset") === "ok"
+      ? "Senha atualizada. Entre com a nova senha."
+      : params.get("verified") === "ok"
+        ? "E-mail confirmado. Já pode entrar."
+        : params.get("verified") === "invalid"
+          ? "Este link de confirmação é inválido ou expirou."
+          : null,
   );
   const [pending, setPending] = useState(false);
 

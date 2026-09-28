@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import { getSiteUrl } from "@/lib/site-url";
 import {
+  createOrderAccessToken,
+  ORDER_ACCESS_TTL_COOKIE,
   orderAccessCookieName,
   orderAccessCookieOptions,
-  orderAccessTokenMaxAge,
   verifyOrderAccessToken,
 } from "@/lib/order-access";
 import { clientIp } from "@/lib/auth/ip";
@@ -30,7 +32,20 @@ export async function GET(request: Request, { params }: { params: Params }) {
     throw error;
   }
 
-  if (!access || !verifyOrderAccessToken(id, access)) {
+  const order = await prisma.order.findUnique({
+    where: { id },
+    select: { accessVersion: true },
+  });
+  if (!order || !access || !verifyOrderAccessToken(id, access, order.accessVersion)) {
+    return NextResponse.redirect(new URL(`/pedido/${id}`, site));
+  }
+
+  // O link do e-mail vale uma vez. O cookie novo usa a versão seguinte.
+  const burned = await prisma.order.updateMany({
+    where: { id, accessVersion: order.accessVersion },
+    data: { accessVersion: { increment: 1 } },
+  });
+  if (burned.count !== 1) {
     return NextResponse.redirect(new URL(`/pedido/${id}`, site));
   }
 
@@ -40,11 +55,12 @@ export async function GET(request: Request, { params }: { params: Params }) {
     destination.searchParams.set(key, value);
   }
 
+  const cookieToken = createOrderAccessToken(id, ORDER_ACCESS_TTL_COOKIE, order.accessVersion + 1);
   const response = NextResponse.redirect(destination);
   response.cookies.set(
     orderAccessCookieName(id),
-    access,
-    orderAccessCookieOptions(orderAccessTokenMaxAge(access)),
+    cookieToken,
+    orderAccessCookieOptions(ORDER_ACCESS_TTL_COOKIE),
   );
   return response;
 }

@@ -52,7 +52,6 @@ export default async function OrderPage({
   if (!canView) notFound();
 
   const paymentId = query.payment_id || query.collection_id;
-  const collectionStatus = query.collection_status || query.status;
   const justCancelled = query.cancelled === "1";
   const justRefunded = query.refunded === "1";
 
@@ -73,15 +72,8 @@ export default async function OrderPage({
   const result = query.result;
   const paymentStatus = fresh.payment?.status;
   const refunded = paymentStatus === "REFUNDED" || fresh.status === "CANCELLED";
-  const approved =
-    !refunded &&
-    (paymentStatus === "APPROVED" || result === "success" || collectionStatus === "approved");
-  const failed =
-    !refunded &&
-    (paymentStatus === "REJECTED" ||
-      result === "failure" ||
-      collectionStatus === "rejected" ||
-      collectionStatus === "cancelled");
+  const approved = !refunded && paymentStatus === "APPROVED";
+  const failed = !refunded && paymentStatus === "REJECTED";
   const pendingPayment =
     !refunded &&
     (result === "pending-payment" ||

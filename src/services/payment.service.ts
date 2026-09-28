@@ -74,7 +74,6 @@ export function mercadoPagoErrorMessage(error: unknown) {
     };
     const cause = err.cause?.[0]?.description ?? err.cause?.[0]?.message;
     const raw = cause || err.message || "";
-    const lower = raw.toLowerCase();
 
     if (isMercadoPagoCredentialRestriction(error)) {
       return (
@@ -82,11 +81,11 @@ export function mercadoPagoErrorMessage(error: unknown) {
         "Em produção use as Credenciais de produção da conta real da loja."
       );
     }
-    if (cause) return cause;
-    if (err.message) return err.message;
+    console.error("[vesta] mercado pago:", raw || "erro sem mensagem");
+  } else if (error instanceof Error) {
+    console.error("[vesta] mercado pago:", error.message);
   }
-  if (error instanceof Error && error.message) return error.message;
-  return "Não foi possível concluir a operação no Mercado Pago.";
+  return "Não foi possível concluir o pagamento. Tente de novo ou fale com a loja.";
 }
 
 function isMercadoPagoCredentialRestriction(error: unknown) {
@@ -126,6 +125,14 @@ export async function createPaymentPreference(orderId: string) {
     include: { items: true, payment: true },
   });
   if (!order) throw new Error("Pedido não encontrado.");
+
+  if (order.totalCents <= 0) {
+    await markOrderPaid(order.id, `no-charge-${order.id}`, { reason: "zero-total" });
+    return {
+      checkoutUrl: `/pedido/${order.id}?result=success`,
+      preferenceId: null as string | null,
+    };
+  }
 
   if (!client) {
     return {
@@ -173,7 +180,7 @@ export async function createPaymentPreference(orderId: string) {
           id: order.id,
           title: `Pedido ${order.number}`,
           quantity: 1,
-          unit_price: Math.max(order.totalCents / 100, 1),
+          unit_price: order.totalCents / 100,
           currency_id: "BRL",
         },
       ],
@@ -246,11 +253,12 @@ export async function handleMercadoPagoNotification(
   const expected = Math.max(order.totalCents / 100, 0);
   const amountOk = Math.abs(paidAmount - expected) < 0.02;
 
+  const currency = String(payment.currency_id ?? "BRL").toUpperCase();
   const status = payment.status;
   if (status === "approved") {
-    if (!amountOk) {
+    if (currency !== "BRL" || !amountOk) {
       console.error(
-        `[vesta] pagamento ${paymentId} com valor divergente: MP=${paidAmount} pedido=${expected}`,
+        `[vesta] pagamento ${paymentId} recusado: moeda=${currency} MP=${paidAmount} pedido=${expected}`,
       );
       return;
     }
@@ -304,6 +312,32 @@ export async function createCardPayment(input: {
     };
   }
 
+  if (order.totalCents <= 0) {
+    await markOrderPaid(order.id, `no-charge-${order.id}`, { reason: "zero-total" });
+    return { status: "approved", statusDetail: "zero_total", paymentId: null };
+  }
+
+  const currentProviderId = order.payment?.providerPaymentId ?? null;
+  if (currentProviderId?.startsWith("inflight:")) {
+    const startedAt = Number(currentProviderId.slice("inflight:".length));
+    if (Number.isFinite(startedAt) && Date.now() - startedAt < 2 * 60 * 1000) {
+      throw new Error("Já existe um pagamento em andamento para este pedido. Aguarde um instante.");
+    }
+  }
+
+  const lockId = `inflight:${Date.now()}`;
+  const claimed = await prisma.payment.updateMany({
+    where: {
+      orderId: order.id,
+      status: { in: [PaymentStatus.PENDING, PaymentStatus.REJECTED] },
+      providerPaymentId: currentProviderId,
+    },
+    data: { providerPaymentId: lockId },
+  });
+  if (claimed.count !== 1) {
+    throw new Error("Já existe um pagamento em andamento para este pedido. Aguarde um instante.");
+  }
+
   const sandbox = isMercadoPagoSandbox();
   const email = (input.payerEmail || order.email).trim();
   const docFromBrick = input.payerIdentification?.number?.replace(/\D/g, "") || "";
@@ -320,9 +354,11 @@ export async function createCardPayment(input: {
       ? Number(issuerRaw)
       : null;
 
-  const amount = Math.max(order.totalCents / 100, 1);
+  const amount = order.totalCents / 100;
   const paymentApi = new Payment(client);
-  const created = await paymentApi.create({
+  let created;
+  try {
+    created = await paymentApi.create({
     body: {
       transaction_amount: amount,
       token: input.token,
@@ -345,9 +381,16 @@ export async function createCardPayment(input: {
       },
     },
     requestOptions: {
-      idempotencyKey: `${order.id}-${input.token.slice(0, 24)}`,
+      idempotencyKey: lockId,
     },
   });
+  } catch (error) {
+    await prisma.payment.updateMany({
+      where: { orderId: order.id, providerPaymentId: lockId },
+      data: { providerPaymentId: null, status: PaymentStatus.PENDING },
+    });
+    throw error;
+  }
 
   const status = String(created.status ?? "");
   if (status === "approved") {
@@ -362,7 +405,11 @@ export async function createCardPayment(input: {
             ? PaymentStatus.REJECTED
             : PaymentStatus.PENDING,
         providerPaymentId: created.id ? String(created.id) : undefined,
-        rawPayload: created as object,
+        rawPayload: {
+          id: created.id ?? null,
+          status: created.status ?? null,
+          status_detail: created.status_detail ?? null,
+        },
       },
     });
   }

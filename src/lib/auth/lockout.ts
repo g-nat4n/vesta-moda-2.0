@@ -1,12 +1,12 @@
 import { prisma } from "@/lib/prisma";
 
-const WINDOW_MS = 60_000;
-const MAX_FAILURES = 3;
+const WINDOW_MS = 15 * 60_000;
+const MAX_FAILURES = 8;
 
 export class LoginLockedError extends Error {
   code = "locked" as const;
   constructor() {
-    super("Muitas tentativas. Aguarde 1 minuto e tente de novo.");
+    super("Muitas tentativas. Aguarde 15 minutos e tente de novo.");
   }
 }
 

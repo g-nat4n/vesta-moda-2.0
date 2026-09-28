@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { generateOrderNumber } from "@/lib/utils";
 import type { CheckoutInput } from "@/lib/validations";
 import { quoteShipping } from "@/services/shipping.service";
-import { applyCoupon } from "@/services/coupon.service";
+import { redeemCoupon } from "@/services/coupon.service";
 import { sendOrderPaidEmail, sendOrderCancelledEmail } from "@/lib/mail";
 
 type CartSnapshot = {
@@ -94,7 +94,7 @@ export async function createOrder(input: CheckoutInput, cart: CartSnapshot[], us
       throw new Error("Opção de envio indisponível. Recalcule o frete.");
     }
 
-    const coupon = await applyCoupon(input.couponCode, subtotalCents);
+    const coupon = await redeemCoupon(tx, input.couponCode, subtotalCents);
     const totalCents = Math.max(subtotalCents - coupon.discountCents + shipping.priceCents, 0);
 
     const order = await tx.order.create({
@@ -144,20 +144,45 @@ export async function createOrder(input: CheckoutInput, cart: CartSnapshot[], us
     });
 
     for (const { item, product } of lines) {
+      // Uma linha só: o segundo checkout simultâneo espera e vê estoque insuficiente.
+      const reserved = await tx.product.updateMany({
+        where: {
+          id: product.id,
+          status: ProductStatus.AVAILABLE,
+          stock: { gte: item.quantity },
+        },
+        data: { stock: { decrement: item.quantity } },
+      });
+      if (reserved.count !== 1) {
+        throw new Error(`${product.name} não está mais disponível.`);
+      }
+      const fresh = await tx.product.findUnique({
+        where: { id: product.id },
+        select: { stock: true },
+      });
       await tx.product.update({
         where: { id: product.id },
         data: {
-          stock: { decrement: item.quantity },
-          status:
-            product.uniquePiece || product.stock - item.quantity <= 0
-              ? ProductStatus.RESERVED
-              : ProductStatus.AVAILABLE,
+          status: (fresh?.stock ?? 0) <= 0 ? ProductStatus.RESERVED : ProductStatus.AVAILABLE,
         },
       });
     }
 
     return order;
   });
+}
+
+/** Guarda só o status do pagamento. Sem nome, e-mail, CPF ou cartão. */
+function paymentTrace(raw: unknown) {
+  if (!raw || typeof raw !== "object") return undefined;
+  const payload = raw as Record<string, unknown>;
+  return {
+    id: payload.id ?? null,
+    status: payload.status ?? null,
+    status_detail: payload.status_detail ?? null,
+    transaction_amount: payload.transaction_amount ?? null,
+    currency_id: payload.currency_id ?? null,
+  };
 }
 
 export async function markOrderPaid(orderId: string, providerPaymentId?: string, rawPayload?: unknown) {
@@ -181,16 +206,21 @@ export async function markOrderPaid(orderId: string, providerPaymentId?: string,
         data: {
           status: PaymentStatus.APPROVED,
           providerPaymentId,
-          rawPayload: rawPayload as object | undefined,
+          rawPayload: paymentTrace(rawPayload),
         },
       });
 
       for (const item of order.items) {
+        // O estoque já baixou na reserva. Aqui só marca vendido se não sobrou unidade.
+        const product = await tx.product.findUnique({
+          where: { id: item.productId },
+          select: { stock: true },
+        });
+        if (!product) continue;
         await tx.product.update({
           where: { id: item.productId },
           data: {
-            status: ProductStatus.SOLD,
-            stock: 0,
+            status: product.stock <= 0 ? ProductStatus.SOLD : ProductStatus.AVAILABLE,
           },
         });
       }
@@ -294,7 +324,7 @@ export async function markOrderRefunded(
       where: { orderId },
       data: {
         status: PaymentStatus.REFUNDED,
-        rawPayload: rawPayload as object | undefined,
+        rawPayload: paymentTrace(rawPayload),
       },
     });
 

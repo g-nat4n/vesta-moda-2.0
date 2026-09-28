@@ -10,6 +10,7 @@ import { passwordSchema } from "@/lib/validations/auth";
 
 export function RegisterForm() {
   const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [password, setPassword] = useState("");
 
@@ -36,6 +37,11 @@ export function RegisterForm() {
     if (!response.ok) {
       setPending(false);
       setError(data.message ?? "Não foi possível criar a conta.");
+      return;
+    }
+    if (data.needsVerification) {
+      setPending(false);
+      setDone(data.message ?? "Confirme o e-mail para entrar.");
       return;
     }
     await signIn("credentials", {
@@ -96,6 +102,7 @@ export function RegisterForm() {
           </div>
         </div>
 
+        {done ? <p className="mt-4 text-sm text-ink">{done}</p> : null}
         {error ? <p className="mt-4 text-sm text-wine">{error}</p> : null}
 
         <Button type="submit" className="mt-6 w-full" disabled={pending}>
